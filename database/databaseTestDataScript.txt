@@ -1,0 +1,173 @@
+-- =========================================
+-- TEST USERS
+-- =========================================
+
+INSERT INTO users (username, password_hash)
+VALUES
+('testuser1', 'fake_hash_1'),
+('testuser2', 'fake_hash_2');
+
+
+-- =========================================
+-- TEST BUSINESSES
+-- =========================================
+
+INSERT INTO businesses (
+    google_place_id,
+    name,
+    address,
+    latitude,
+    longitude
+)
+VALUES
+(
+    'test_place_001',
+    'Target',
+    '1212 Example Street',
+    36.0726,
+    -79.7920
+),
+(
+    'test_place_002',
+    'Sheetz',
+    '2500 Example Road',
+    36.0800,
+    -79.8000
+),
+(
+    'test_place_003',
+    'McDonalds',
+    '300 Example Avenue',
+    36.0650,
+    -79.7850
+);
+
+
+-- =========================================
+-- TEST RESTROOMS
+-- =========================================
+
+INSERT INTO restrooms (
+    business_id,
+    access_type,
+    restroom_type,
+    accessible,
+    male_changing_table,
+    female_changing_table,
+    requires_purchase,
+    requires_code,
+    verified
+)
+VALUES
+(
+    1,
+    'PUBLIC',
+    'MULTI_STALL',
+    TRUE,
+    TRUE,
+    TRUE,
+    FALSE,
+    FALSE,
+    TRUE
+),
+(
+    2,
+    'PUBLIC',
+    'SINGLE_STALL',
+    TRUE,
+    FALSE,
+    TRUE,
+    FALSE,
+    FALSE,
+    TRUE
+),
+(
+    3,
+    'CUSTOMER_ONLY',
+    'MULTI_STALL',
+    TRUE,
+    FALSE,
+    TRUE,
+    TRUE,
+    FALSE,
+    FALSE
+);
+
+
+-- =========================================
+-- TEST RATINGS
+-- =========================================
+
+INSERT INTO ratings (
+    user_id,
+    restroom_id,
+    cleanliness,
+    privacy,
+    accessibility,
+    overall
+)
+VALUES
+(
+    1,
+    1,
+    5,
+    4,
+    5,
+    5
+),
+(
+    1,
+    2,
+    4,
+    5,
+    5,
+    4
+),
+(
+    2,
+    1,
+    4,
+    4,
+    5,
+    4
+),
+(
+    2,
+    3,
+    3,
+    3,
+    4,
+    3
+);
+
+
+-- =========================================
+-- TEST REVIEWS
+-- =========================================
+
+INSERT INTO reviews (
+    user_id,
+    restroom_id,
+    comment
+)
+VALUES
+(
+    1,
+    1,
+    'Very clean and easy to find.'
+),
+(
+    2,
+    1,
+    'Clean restroom with plenty of stalls.'
+),
+(
+    1,
+    2,
+    'Private and clean restroom.'
+),
+(
+    2,
+    3,
+    'Decent restroom but you need to be a customer.'
+);
