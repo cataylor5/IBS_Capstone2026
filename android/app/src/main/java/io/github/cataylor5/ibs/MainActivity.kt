@@ -1,4 +1,4 @@
-\package io.github.cataylor5.ibs
+package io.github.cataylor5.ibs
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
