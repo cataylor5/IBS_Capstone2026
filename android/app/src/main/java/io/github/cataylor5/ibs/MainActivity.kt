@@ -1,6 +1,9 @@
 package io.github.cataylor5.ibs
 // This places the file in our app's existing package.
 
+import androidx.compose.material3.FilterChip
+// This provides a small selectable control for filtering results.
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -80,6 +83,9 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
     var showRestrooms by rememberSaveable { mutableStateOf(false) }
     // This starts with the sample list hidden and remembers the selection.
 
+    var freePublicOnly by rememberSaveable { mutableStateOf(false) }
+// This remembers whether the free-public-restroom filter is enabled.
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -153,34 +159,74 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
         }
 
         if (showRestrooms) {
-            // The following items appear only when the list is visible.
+            // This section appears after the user requests the sample list.
 
             Text(
                 text = "Sample restrooms",
                 style = MaterialTheme.typography.titleLarge
             )
 
-            RestroomCard(
-                name = "Demo Library",
-                accessDescription = "Public access • No fee"
-            )
-            // This displays our first fictional restroom.
+            FilterChip(
+                selected = freePublicOnly,
+                // This controls whether the filter looks selected.
 
-            RestroomCard(
-                name = "Demo Café",
-                accessDescription = "Customers only • Purchase required"
+                onClick = { freePublicOnly = !freePublicOnly },
+                // Each tap switches the filter on or off.
+
+                label = { Text("Free public restrooms only") }
             )
 
-            RestroomCard(
-                name = "Demo Transit Center",
-                accessDescription = "Public access • Fee required"
+            val visibleRestrooms = sampleRestrooms.filter { restroom ->
+                // This builds a list containing only the records we want to display.
+
+                !freePublicOnly ||
+                        (restroom.accessType == "public" && restroom.feeRequired == false)
+                // With the filter off, include everything.
+                // With it on, require public access and a confirmed lack of fees.
+            }
+
+            Text(
+                text = "Results: ${visibleRestrooms.size}",
+                style = MaterialTheme.typography.bodyMedium
             )
+            // This displays how many sample records match the current filter.
+
+            if (visibleRestrooms.isEmpty()) {
+                Text(
+                    text = "No restrooms match this filter.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                // This explains an empty result instead of leaving a blank area.
+            }
+
+            visibleRestrooms.forEach { restroom ->
+                // This creates one card for each matching restroom.
+
+                val accessLabel = when (restroom.accessType) {
+                    "public" -> "Public access"
+                    "customers_only" -> "Customers only"
+                    else -> "Access unknown"
+                }
+                // This turns the stored access value into readable wording.
+
+                val feeLabel = when (restroom.feeRequired) {
+                    true -> "Fee required"
+                    false -> "No restroom fee"
+                    null -> "Fee unknown"
+                }
+                // This describes the fee without treating missing information as free.
+
+                RestroomCard(
+                    name = restroom.name,
+                    accessDescription = "$accessLabel • $feeLabel"
+                )
+                // This fills our existing card component with this record's information.
+            }
         } else {
             Text(
                 text = "Tap Find a Restroom to explore the sample list.",
                 style = MaterialTheme.typography.bodyMedium
             )
-            // This gives the user an instruction while the list is hidden.
         }
     }
 }
