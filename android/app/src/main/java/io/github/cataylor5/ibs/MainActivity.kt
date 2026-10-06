@@ -4,6 +4,10 @@ package io.github.cataylor5.ibs
 import androidx.compose.material3.FilterChip
 // This provides a small selectable control for filtering results.
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+// this will expand our button options
+
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -85,6 +89,25 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
 
     var freePublicOnly by rememberSaveable { mutableStateOf(false) }
 // This remembers whether the free-public-restroom filter is enabled.
+
+    var selectedRestroomId by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+// This remembers the selected restroom's ID.
+// A null value means no restroom details are open.
+
+    val selectedRestroom = sampleRestrooms.find {
+        it.id == selectedRestroomId
+    }
+// Find the sample record whose ID matches the user's selection.
+
+    if (selectedRestroom != null) {
+        RestroomDetailsDialog(
+            restroom = selectedRestroom,
+            onClose = { selectedRestroomId = null }
+        )
+        // Clearing the selected ID removes the popup.
+    }
 
     Column(
         modifier = modifier
@@ -218,9 +241,10 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
 
                 RestroomCard(
                     name = restroom.name,
-                    accessDescription = "$accessLabel • $feeLabel"
+                    accessDescription = "$accessLabel • $feeLabel",
+                    onViewDetails = { selectedRestroomId = restroom.id }
                 )
-                // This fills our existing card component with this record's information.
+// Pressing this card's details button selects this restroom.
             }
         } else {
             Text(
@@ -233,33 +257,36 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
 
 
 @Composable
-fun RestroomCard(name: String, accessDescription: String) {
-    // This reusable component displays one restroom's information.
-
+fun RestroomCard(
+    name: String,
+    accessDescription: String,
+    onViewDetails: () -> Unit
+    // This is the action to perform when View details is pressed.
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // This spaces the information within the card.
-
             Text(
                 text = name,
                 style = MaterialTheme.typography.titleMedium
             )
-            // This displays the name passed into this card.
 
             Text(
                 text = accessDescription,
                 style = MaterialTheme.typography.bodyMedium
             )
-            // This displays the access and payment information.
 
             Text(
                 text = "No ratings yet",
                 style = MaterialTheme.typography.bodySmall
             )
-            // Our fictional examples do not have user ratings.
+
+            TextButton(onClick = onViewDetails) {
+                Text("View details")
+            }
+            // This runs the action supplied by the home screen.
         }
     }
 }
@@ -277,4 +304,50 @@ fun IBSHomeScreenPreview() {
             )
         }
     }
+}
+
+@Composable
+fun RestroomDetailsDialog(
+    restroom: Restroom,
+    onClose: () -> Unit
+) {
+    val accessDescription = when (restroom.accessType) {
+        "public" -> "Open to the public."
+        "customers_only" -> "Customers only. A purchase may be required."
+        else -> "Access requirements have not been confirmed."
+    }
+    // This explains the access rules in readable language.
+
+    val feeDescription = when (restroom.feeRequired) {
+        true -> "A restroom fee is required. Amount not provided."
+        false -> "No separate restroom fee."
+        null -> "Restroom fee information is unknown."
+    }
+    // A separate restroom fee is different from a required purchase.
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        // Close when the user taps outside or presses Back.
+
+        title = {
+            Text(restroom.name)
+        },
+
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(accessDescription)
+                Text(feeDescription)
+                Text("No ratings yet.")
+                Text("Fictional demo location.")
+            }
+        },
+
+        confirmButton = {
+            TextButton(onClick = onClose) {
+                Text("Close")
+            }
+        }
+    )
 }
