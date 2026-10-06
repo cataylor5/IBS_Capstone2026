@@ -1,0 +1,1 @@
+Backend code goes here. Planned stack: Node.js and Express. This folder contains the API used by the Android app.

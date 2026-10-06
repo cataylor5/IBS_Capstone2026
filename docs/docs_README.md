@@ -1,0 +1,1 @@
+Shared project documentation goes here. Record API requests, response examples, screen designs, and team decisions.
