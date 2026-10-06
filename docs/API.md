@@ -1,0 +1,1 @@
+this is where we should agree on things like "the restroom-list request returns an ID, name, coordinates, and rating"
