@@ -39,6 +39,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 // These imports let the screen remember and respond to changing values.
 
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.rememberCameraPositionState
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -159,27 +165,14 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
             // This changes the button's wording to match its next action.
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // This creates a container for the future map.
-
-            Box(
+        Card(modifier = Modifier.fillMaxWidth()) {
+            IBSMap(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // This centers the placeholder text inside the map area.
-
-                Text(
-                    text = "Map preview\nGoogle Maps will be added here.",
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
+                    .height(300.dp)
+            )
         }
+// This gives the real map a fixed-height space on the home screen.
 
         if (showRestrooms) {
             // This section appears after the user requests the sample list.
@@ -350,4 +343,27 @@ fun RestroomDetailsDialog(
             }
         }
     )
+}
+
+@Composable
+fun IBSMap(modifier: Modifier = Modifier) {
+    val startingLocation = LatLng(36.0726, -79.7920)
+    // This sets our starting map view around Greensboro.
+
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(
+            startingLocation,
+            12f
+        )
+    }
+    // This holds the map's viewing position and starting zoom level.
+
+    GoogleMap(
+        modifier = modifier,
+        cameraPositionState = cameraPositionState,
+        uiSettings = MapUiSettings(
+            zoomControlsEnabled = true
+        )
+    )
+    // This displays the map with plus and minus zoom buttons.
 }
