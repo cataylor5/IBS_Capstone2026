@@ -107,6 +107,15 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
     }
 // Find the sample record whose ID matches the user's selection.
 
+    var startLatitude by rememberSaveable {
+        mutableStateOf<Double?>(null)
+    }
+    var startLongitude by rememberSaveable {
+        mutableStateOf<Double?>(null)
+    }
+// These hold the selected starting coordinates.
+// Null means a starting location has not been selected.
+
     if (selectedRestroom != null) {
         RestroomDetailsDialog(
             restroom = selectedRestroom,
@@ -148,6 +157,7 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
         )
         // This makes it clear that we are displaying practice data.
 
+
         Button(
             onClick = { showRestrooms = !showRestrooms },
             // Each tap switches the sample list between visible and hidden.
@@ -164,6 +174,24 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
             )
             // This changes the button's wording to match its next action.
         }
+
+        CurrentLocationButton(
+            onLocationSelected = { latitude, longitude ->
+                startLatitude = latitude
+                startLongitude = longitude
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+// Save the coordinates received from the location component.
+
+        if (startLatitude != null && startLongitude != null) {
+            Text(
+                text = "Selected start: $startLatitude, $startLongitude",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+// Show the coordinates temporarily so we can verify the feature.
+
 
         Card(modifier = Modifier.fillMaxWidth()) {
             IBSMap(
