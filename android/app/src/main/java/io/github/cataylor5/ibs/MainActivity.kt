@@ -204,15 +204,7 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleLarge
             )
 
-            FilterChip(
-                selected = freePublicOnly,
-                // This controls whether the filter looks selected.
 
-                onClick = { freePublicOnly = !freePublicOnly },
-                // Each tap switches the filter on or off.
-
-                label = { Text("Free public restrooms only") }
-            )
 
             val visibleRestrooms = sampleRestrooms.filter { restroom ->
                 // This builds a list containing only the records we want to display.

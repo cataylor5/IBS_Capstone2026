@@ -2,8 +2,11 @@ package io.github.cataylor5.ibs
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -15,8 +18,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
@@ -31,9 +36,9 @@ fun TripPlanningForm(
     modifier: Modifier = Modifier
 ) {
     var useCurrentLocation by rememberSaveable {
-        mutableStateOf(true)
+        mutableStateOf(false)
     }
-    // This selects whether to use coordinates or a typed starting point.
+    // Begin with an empty, editable starting-location field.
 
     var startingPoint by rememberSaveable {
         mutableStateOf("")
@@ -42,39 +47,44 @@ fun TripPlanningForm(
     var destination by rememberSaveable {
         mutableStateOf("")
     }
-    // These hold the text entered into the form.
-
-    var attemptedPreview by rememberSaveable {
-        mutableStateOf(false)
-    }
-    // Show missing-input errors after the first preview attempt.
-
-    var showPreview by rememberSaveable {
-        mutableStateOf(false)
-    }
-    // This controls whether the summary popup is visible.
+    // Remember the text entered into both fields.
 
     var maxDetourMinutes by rememberSaveable {
         mutableStateOf(10)
     }
-// Start with a suggested allowance of 10 extra driving minutes.
+    // Default to 10 extra driving minutes.
+
+    var attemptedPreview by rememberSaveable {
+        mutableStateOf(false)
+    }
+
+    var showPreview by rememberSaveable {
+        mutableStateOf(false)
+    }
+    // Control validation messages and the preview popup.
+
+    var locationStatus by remember {
+        mutableStateOf("")
+    }
+
+    var isLocating by remember {
+        mutableStateOf(false)
+    }
+    // Track feedback from the location button.
 
     val focusManager = LocalFocusManager.current
-    // This lets us remove focus from a text field when previewing.
 
     val hasCoordinates =
         startLatitude != null && startLongitude != null
-    // Both coordinates are required for a location-based start.
 
     val startMissing = if (useCurrentLocation) {
         !hasCoordinates
     } else {
         startingPoint.isBlank()
     }
-    // Check whichever starting-point option is selected.
 
     val destinationMissing = destination.isBlank()
-    // Spaces alone do not count as a destination.
+    // Check that a starting point and destination are available.
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -87,75 +97,138 @@ fun TripPlanningForm(
             )
 
             Text(
-                text = "Where are you starting?",
+                text = "Out of way by:",
                 style = MaterialTheme.typography.titleMedium
             )
 
-            FilterChip(
-                selected = useCurrentLocation,
-                onClick = {
-                    useCurrentLocation = true
-                    attemptedPreview = false
-                    showPreview = false
-                },
-                label = { Text("Use current location") }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(5, 10, 15).forEach { minutes ->
+                    FilterChip(
+                        selected = maxDetourMinutes == minutes,
+                        onClick = {
+                            maxDetourMinutes = minutes
+                            showPreview = false
+                        },
+                        label = { Text("$minutes") },
+                        shape = RoundedCornerShape(50)
+                    )
+                }
+            }
+            // Arrange the rounded detour choices side by side.
+
+            Text(
+                text = "Extra driving minutes per stop.",
+                style = MaterialTheme.typography.bodySmall
             )
 
-            FilterChip(
-                selected = !useCurrentLocation,
-                onClick = {
-                    useCurrentLocation = false
-                    attemptedPreview = false
-                    showPreview = false
-                },
-                label = { Text("Enter a starting point") }
+            Text(
+                text = "Availability:",
+                style = MaterialTheme.typography.titleMedium
             )
-            // These choices switch between location and manual entry.
 
-            if (useCurrentLocation) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = freePublicOnly,
+                    onClick = {
+                        onFreePublicOnlyChange(true)
+                        showPreview = false
+                    },
+                    label = { Text("Free") },
+                    shape = RoundedCornerShape(50)
+                )
+
+                FilterChip(
+                    selected = !freePublicOnly,
+                    onClick = {
+                        onFreePublicOnlyChange(false)
+                        showPreview = false
+                    },
+                    label = { Text("Any") },
+                    shape = RoundedCornerShape(50)
+                )
+            }
+            // Free and Any share the existing restroom-list preference.
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 CurrentLocationButton(
                     onLocationSelected = { latitude, longitude ->
                         onLocationSelected(latitude, longitude)
+                        useCurrentLocation = true
+                        attemptedPreview = false
                         showPreview = false
+                        focusManager.clearFocus()
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    compact = true,
+                    onStatusChanged = { message, loading ->
+                        locationStatus = message
+                        isLocating = loading
+                    },
+                    modifier = Modifier.width(56.dp)
                 )
-                // Reuse the location button we already built.
+                // Request a location directly from the small GPS button.
 
-                if (hasCoordinates) {
-                    Text(
-                        text = "Selected coordinates: " +
-                                "$startLatitude, $startLongitude",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                if (attemptedPreview && startMissing) {
-                    Text(
-                        text = "Get your location or enter a starting point.",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            } else {
                 OutlinedTextField(
-                    value = startingPoint,
+                    value = if (useCurrentLocation && hasCoordinates) {
+                        "Using current location"
+                    } else {
+                        startingPoint
+                    },
                     onValueChange = {
                         startingPoint = it
                         showPreview = false
                     },
-                    label = { Text("Starting point") },
-                    placeholder = { Text("Address, place, or city") },
+                    label = { Text("Starting location") },
                     singleLine = true,
+                    readOnly = useCurrentLocation,
+                    enabled = !isLocating,
                     isError = attemptedPreview && startMissing,
-                    supportingText = {
-                        if (attemptedPreview && startMissing) {
-                            Text("Enter a starting point.")
+                    trailingIcon = {
+                        if (useCurrentLocation) {
+                            TextButton(
+                                onClick = {
+                                    useCurrentLocation = false
+                                    startingPoint = ""
+                                    locationStatus = ""
+                                    showPreview = false
+                                }
+                            ) {
+                                Text("Edit")
+                            }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 )
-                // Manual entry also works when location access is denied.
+                // Always display the field beside the GPS button.
+                // Edit switches from coordinates to a typed starting point.
             }
+
+            if (attemptedPreview && startMissing) {
+                Text(
+                    text = "Enter a starting location or tap GPS.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (
+                locationStatus.isNotBlank() &&
+                locationStatus !=
+                "Use your location as the trip's starting point."
+            ) {
+                Text(
+                    text = locationStatus,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            // Show location progress or errors below the field.
 
             OutlinedTextField(
                 value = destination,
@@ -175,53 +248,6 @@ fun TripPlanningForm(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Text(
-                text = "Restroom stop preferences",
-                style = MaterialTheme.typography.titleMedium
-            )
-            
-            Text(
-                text = "Maximum extra driving time per stop",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            
-            listOf(5, 10, 15).forEach { minutes ->
-                FilterChip(
-                    selected = maxDetourMinutes == minutes,
-                    onClick = {
-                        maxDetourMinutes = minutes
-                        showPreview = false
-                    },
-                    label = { Text("$minutes minutes") }
-                )
-            }
-            // Only the chip matching the selected number appears selected.
-            
-            Text(
-                text = "Includes getting back to your route. " +
-                        "Does not include time spent at the restroom.",
-                style = MaterialTheme.typography.bodySmall
-            )
-            
-            FilterChip(
-                selected = freePublicOnly,
-                onClick = {
-                    onFreePublicOnlyChange(!freePublicOnly)
-                    showPreview = false
-                },
-                label = { Text("Free public restrooms only") }
-            )
-            // Update the shared preference when this chip is tapped.
-            
-            Text(
-                text = if (freePublicOnly) {
-                    "Require public access and no restroom fee."
-                } else {
-                    "Allow paid and customer-only options too."
-                },
-                style = MaterialTheme.typography.bodySmall
-            )
-
             Button(
                 onClick = {
                     attemptedPreview = true
@@ -231,15 +257,15 @@ fun TripPlanningForm(
                         showPreview = true
                     }
                 },
+                enabled = !isLocating,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Preview trip")
             }
-            // Only open the summary when both inputs are present.
+            // Wait for an active location request before allowing preview.
 
             Text(
-                text = "Planning preview only. Addresses are not yet " +
-                        "verified and no route is calculated.",
+                text = "Preview only. Addresses and routes aren't verified yet.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -254,37 +280,38 @@ fun TripPlanningForm(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (useCurrentLocation) {
-                        Text("From: Selected device location")
+                        Text("From: Current location")
                         Text("$startLatitude, $startLongitude")
                     } else {
                         Text("From: ${startingPoint.trim()}")
                     }
 
                     Text("To: ${destination.trim()}")
-                    // Trim removes extra spaces at the beginning and end.
+
                     Text(
-                        text = "Maximum detour: $maxDetourMinutes extra driving minutes per stop"
+                        "Maximum detour: $maxDetourMinutes " +
+                                "extra driving minutes per stop."
                     )
 
                     Text(
-                        text = if (freePublicOnly) {
-                            "Restrooms: Free public locations only"
+                        if (freePublicOnly) {
+                            "Availability: Free public restrooms."
                         } else {
-                            "Restrooms: Paid and customer-only options allowed"
+                            "Availability: Any, including paid " +
+                                    "and customer-only restrooms."
                         }
                     )
-// Show the preferences selected in the trip form.
 
                     Text(
-                        "This is a summary of your selections. " +
-                                "Route and restroom suggestions come later."
+                        "Detour time includes returning to the route, " +
+                                "but not time spent at the restroom."
                     )
+
+                    Text("No route has been calculated yet.")
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = { showPreview = false }
-                ) {
+                TextButton(onClick = { showPreview = false }) {
                     Text("Back to planning")
                 }
             }

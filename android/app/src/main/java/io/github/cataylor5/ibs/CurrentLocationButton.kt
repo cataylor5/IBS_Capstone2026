@@ -27,11 +27,15 @@ import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.LaunchedEffect
 
 @Composable
 fun CurrentLocationButton(
     onLocationSelected: (Double, Double) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    onStatusChanged: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     // This gives us access to Android services and settings.
@@ -51,6 +55,11 @@ fun CurrentLocationButton(
     var permissionDenied by remember { mutableStateOf(false) }
     // These values control the button and its feedback.
 
+
+    LaunchedEffect(status, isLoading) {
+        onStatusChanged(status, isLoading)
+    }
+// Let the trip form display feedback below the starting-location field.
     DisposableEffect(Unit) {
         onDispose {
             cancellation.cancel()
@@ -174,16 +183,24 @@ fun CurrentLocationButton(
                 }
             },
             enabled = !isLoading,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                if (isLoading) "Finding location…" else "Use my location"
+                text = if (compact) {
+                    if (isLoading) "…" else "GPS"
+                } else {
+                    if (isLoading) "Finding location…" else "Use my location"
+                }
             )
+// Compact mode keeps the button small enough to sit beside a field.
         }
 
-        Text(status)
+        if (!compact) {
+            Text(status)
+        }
 
-        if (permissionDenied) {
+        if (permissionDenied && !compact) {
             TextButton(
                 onClick = {
                     val intent = Intent(
