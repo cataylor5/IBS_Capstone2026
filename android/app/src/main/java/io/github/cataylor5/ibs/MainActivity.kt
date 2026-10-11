@@ -175,23 +175,16 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
             // This changes the button's wording to match its next action.
         }
 
-        CurrentLocationButton(
+        TripPlanningForm(
+            startLatitude = startLatitude,
+            startLongitude = startLongitude,
             onLocationSelected = { latitude, longitude ->
                 startLatitude = latitude
                 startLongitude = longitude
             },
             modifier = Modifier.fillMaxWidth()
         )
-// Save the coordinates received from the location component.
-
-        if (startLatitude != null && startLongitude != null) {
-            Text(
-                text = "Selected start: $startLatitude, $startLongitude",
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-// Show the coordinates temporarily so we can verify the feature.
-
+// Show the trip form and keep its selected coordinates on the home screen.
 
         Card(modifier = Modifier.fillMaxWidth()) {
             IBSMap(
