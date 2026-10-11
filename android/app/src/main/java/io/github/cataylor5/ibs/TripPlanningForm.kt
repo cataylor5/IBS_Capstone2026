@@ -26,6 +26,8 @@ fun TripPlanningForm(
     startLatitude: Double?,
     startLongitude: Double?,
     onLocationSelected: (Double, Double) -> Unit,
+    freePublicOnly: Boolean,
+    onFreePublicOnlyChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var useCurrentLocation by rememberSaveable {
@@ -51,6 +53,11 @@ fun TripPlanningForm(
         mutableStateOf(false)
     }
     // This controls whether the summary popup is visible.
+
+    var maxDetourMinutes by rememberSaveable {
+        mutableStateOf(10)
+    }
+// Start with a suggested allowance of 10 extra driving minutes.
 
     val focusManager = LocalFocusManager.current
     // This lets us remove focus from a text field when previewing.
@@ -168,6 +175,53 @@ fun TripPlanningForm(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Text(
+                text = "Restroom stop preferences",
+                style = MaterialTheme.typography.titleMedium
+            )
+            
+            Text(
+                text = "Maximum extra driving time per stop",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            
+            listOf(5, 10, 15).forEach { minutes ->
+                FilterChip(
+                    selected = maxDetourMinutes == minutes,
+                    onClick = {
+                        maxDetourMinutes = minutes
+                        showPreview = false
+                    },
+                    label = { Text("$minutes minutes") }
+                )
+            }
+            // Only the chip matching the selected number appears selected.
+            
+            Text(
+                text = "Includes getting back to your route. " +
+                        "Does not include time spent at the restroom.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            
+            FilterChip(
+                selected = freePublicOnly,
+                onClick = {
+                    onFreePublicOnlyChange(!freePublicOnly)
+                    showPreview = false
+                },
+                label = { Text("Free public restrooms only") }
+            )
+            // Update the shared preference when this chip is tapped.
+            
+            Text(
+                text = if (freePublicOnly) {
+                    "Require public access and no restroom fee."
+                } else {
+                    "Allow paid and customer-only options too."
+                },
+                style = MaterialTheme.typography.bodySmall
+            )
+
             Button(
                 onClick = {
                     attemptedPreview = true
@@ -208,6 +262,18 @@ fun TripPlanningForm(
 
                     Text("To: ${destination.trim()}")
                     // Trim removes extra spaces at the beginning and end.
+                    Text(
+                        text = "Maximum detour: $maxDetourMinutes extra driving minutes per stop"
+                    )
+
+                    Text(
+                        text = if (freePublicOnly) {
+                            "Restrooms: Free public locations only"
+                        } else {
+                            "Restrooms: Paid and customer-only options allowed"
+                        }
+                    )
+// Show the preferences selected in the trip form.
 
                     Text(
                         "This is a summary of your selections. " +

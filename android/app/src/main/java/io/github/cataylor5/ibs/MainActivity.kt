@@ -157,7 +157,6 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
         )
         // This makes it clear that we are displaying practice data.
 
-
         Button(
             onClick = { showRestrooms = !showRestrooms },
             // Each tap switches the sample list between visible and hidden.
@@ -182,9 +181,11 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
                 startLatitude = latitude
                 startLongitude = longitude
             },
+            freePublicOnly = freePublicOnly,
+            onFreePublicOnlyChange = { freePublicOnly = it },
             modifier = Modifier.fillMaxWidth()
         )
-// Show the trip form and keep its selected coordinates on the home screen.
+// The form and restroom list now share one free-public preference.
 
         Card(modifier = Modifier.fillMaxWidth()) {
             IBSMap(
