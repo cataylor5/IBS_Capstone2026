@@ -67,18 +67,17 @@ class MainActivity : ComponentActivity() {
         // This lets the app draw behind the system bars.
 
         setContent {
-            // This starts the Compose interface.
-
             IBSTheme {
-                // This applies our existing app colors and text styles.
-
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // This provides the screen layout and system-bar spacing.
-
-                    IBSHomeScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                    // This displays our home screen within that spacing.
+                IbsLaunchScreen(
+                    lifecycle = this@MainActivity.lifecycle
+                ) {
+                    Scaffold(
+                        modifier = Modifier.fillMaxSize()
+                    ) { innerPadding ->
+                        IBSHomeScreen(
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                    }
                 }
             }
         }

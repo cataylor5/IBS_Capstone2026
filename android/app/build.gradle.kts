@@ -71,4 +71,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.play.services.location)
 // This adds Google's device-location service.
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+// Plays the video stored inside the app.
+
+    implementation("androidx.media3:media3-ui:1.11.1")
+// Provides the view that displays the video.
 }
