@@ -74,6 +74,25 @@ fun TripPlanningForm(
     }
     // Track feedback from the location button.
 
+    var selectedStopId by rememberSaveable(
+        startingPoint,
+        destination,
+        useCurrentLocation,
+        startLatitude,
+        startLongitude,
+        maxDetourMinutes,
+        freePublicOnly
+    ) {
+        mutableStateOf<String?>(null)
+    }
+// Keeps the selection outside the popup.
+// Resets it when the trip details or preferences change.
+
+    val selectedStop = demoTripStops.find {
+        it.id == selectedStopId
+    }
+// Looks up the full details of the selected stop.
+
     val focusManager = LocalFocusManager.current
 
     val hasCoordinates =
@@ -273,6 +292,65 @@ fun TripPlanningForm(
         }
     }
 
+    if (selectedStop != null) {
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Your planned stop",
+                    style = MaterialTheme.typography.titleLarge
+                )
+
+                Text(
+                    text = selectedStop.name,
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Text(selectedStop.accessDescription)
+
+                Text(
+                    text = "Demo detour: " +
+                            "${selectedStop.detourMinutes} extra minutes"
+                )
+
+                Text(
+                    text = "Fictional demo stop. No route has been calculated.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showPreview = true
+                        },
+                        enabled = !isLocating &&
+                                !startMissing &&
+                                !destinationMissing
+                    ) {
+                        Text("Change")
+                    }
+                    // Reopens the preview with the current selection.
+
+                    TextButton(
+                        onClick = {
+                            selectedStopId = null
+                        }
+                    ) {
+                        Text("Remove")
+                    }
+                    // Clears the selection and hides this card.
+                }
+            }
+        }
+    }
+
     if (showPreview && !startMissing && !destinationMissing) {
         AlertDialog(
             onDismissRequest = { showPreview = false },
@@ -313,8 +391,13 @@ fun TripPlanningForm(
                     Text("No route has been calculated yet.")
                     DemoTripStops(
                         maxDetourMinutes = maxDetourMinutes,
-                        freePublicOnly = freePublicOnly
+                        freePublicOnly = freePublicOnly,
+                        selectedStopId = selectedStopId,
+                        onStopSelected = { stopId ->
+                            selectedStopId = stopId
+                        }
                     )
+// Shares one selection between the popup and the planned-stop card.
 // Passes the form's preferences into the demo results.
                 }
             },

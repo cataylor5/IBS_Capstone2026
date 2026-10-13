@@ -16,7 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private data class DemoTripStop(
+data class DemoTripStop(
     val id: String,
     val name: String,
     val detourMinutes: Int,
@@ -25,7 +25,7 @@ private data class DemoTripStop(
 )
 // Describes one fictional stop and its sample detour time.
 
-private val demoTripStops = listOf(
+val demoTripStops = listOf(
     DemoTripStop(
         id = "demo-cafe",
         name = "Demo Café",
@@ -61,15 +61,11 @@ private val demoTripStops = listOf(
 fun DemoTripStops(
     maxDetourMinutes: Int,
     freePublicOnly: Boolean,
+    selectedStopId: String?,
+    onStopSelected: (String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedStopId by rememberSaveable(
-        maxDetourMinutes,
-        freePublicOnly
-    ) {
-        mutableStateOf<String?>(null)
-    }
-    // Clears the selection when the filters change.
+    // Receives the selection from the trip form instead of storing it here.
 
     val matchingStops = demoTripStops
         .filter { stop ->
@@ -127,13 +123,15 @@ fun DemoTripStops(
 
                     TextButton(
                         onClick = {
-                            selectedStopId =
+                            onStopSelected(
                                 if (selectedStopId == stop.id) {
                                     null
                                 } else {
                                     stop.id
                                 }
+                            )
                         }
+// Tells the trip form which stop was selected or removed.
                     ) {
                         Text(
                             if (selectedStopId == stop.id) {
