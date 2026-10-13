@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 @Composable
 fun TripPlanningForm(
@@ -277,6 +279,7 @@ fun TripPlanningForm(
             title = { Text("Your trip preview") },
             text = {
                 Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (useCurrentLocation) {
@@ -308,6 +311,11 @@ fun TripPlanningForm(
                     )
 
                     Text("No route has been calculated yet.")
+                    DemoTripStops(
+                        maxDetourMinutes = maxDetourMinutes,
+                        freePublicOnly = freePublicOnly
+                    )
+// Passes the form's preferences into the demo results.
                 }
             },
             confirmButton = {
