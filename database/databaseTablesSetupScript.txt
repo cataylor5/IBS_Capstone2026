@@ -1,0 +1,129 @@
+-- RESTROOM FINDER DATABASE
+
+-- Stores all user information
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL
+);
+
+
+-- Stores all business information and Google connection information
+CREATE TABLE businesses (
+    business_id SERIAL PRIMARY KEY,
+    google_place_id VARCHAR(255) UNIQUE,
+    name VARCHAR(150) NOT NULL,
+    address VARCHAR(255),
+    latitude DECIMAL(9,6) NOT NULL,
+    longitude DECIMAL(9,6) NOT NULL
+);
+
+
+-- Stores restroom information
+CREATE TABLE restrooms (
+    restroom_id SERIAL PRIMARY KEY,
+
+    business_id INTEGER NOT NULL,
+
+    -- Set values that have no confirmed restroom as unknown
+    access_type VARCHAR(30) DEFAULT 'UNKNOWN',
+    restroom_type VARCHAR(30) DEFAULT 'UNKNOWN',
+
+    accessible BOOLEAN DEFAULT FALSE,
+    male_changing_table BOOLEAN DEFAULT FALSE,
+    female_changing_table BOOLEAN DEFAULT FALSE,
+    requires_purchase BOOLEAN DEFAULT FALSE,
+    requires_code BOOLEAN DEFAULT FALSE,
+
+    verified BOOLEAN DEFAULT FALSE,
+
+    -- Requires a business ID
+    CONSTRAINT fk_restroom_business
+        FOREIGN KEY (business_id)
+        REFERENCES businesses(business_id)
+        ON DELETE CASCADE,
+
+    -- Valid access types
+    CONSTRAINT valid_access_type
+        CHECK (
+            access_type IN (
+                'PUBLIC',
+                'CUSTOMER_ONLY',
+                'EMPLOYEE_ONLY',
+                'UNKNOWN'
+            )
+        ),
+
+    -- Valid restroom types
+    CONSTRAINT valid_restroom_type
+        CHECK (
+            restroom_type IN (
+                'SINGLE_STALL',
+                'MULTI_STALL',
+                'FAMILY',
+                'UNKNOWN'
+            )
+        )
+);
+
+
+-- Stores rating information
+CREATE TABLE ratings (
+    rating_id SERIAL PRIMARY KEY,
+
+    user_id INTEGER NOT NULL,
+    restroom_id INTEGER NOT NULL,
+
+    cleanliness INTEGER,
+    privacy INTEGER,
+    accessibility INTEGER,
+    overall INTEGER NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Rating belongs to a user
+    CONSTRAINT fk_rating_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+
+    -- Rating belongs to a restroom
+    CONSTRAINT fk_rating_restroom
+        FOREIGN KEY (restroom_id)
+        REFERENCES restrooms(restroom_id)
+        ON DELETE CASCADE,
+
+    -- Ratings must be between 1 and 5
+    CONSTRAINT valid_cleanliness
+        CHECK (cleanliness BETWEEN 1 AND 5),
+
+    CONSTRAINT valid_privacy
+        CHECK (privacy BETWEEN 1 AND 5),
+
+    CONSTRAINT valid_accessibility_rating
+        CHECK (accessibility BETWEEN 1 AND 5),
+
+    CONSTRAINT valid_overall_rating
+        CHECK (overall BETWEEN 1 AND 5),
+
+    -- A user can only rate each restroom once
+    CONSTRAINT unique_user_restroom_rating
+        UNIQUE (user_id, restroom_id)
+);
+
+--Allows reviews with comments
+CREATE TABLE reviews (
+    review_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    restroom_id INTEGER NOT NULL,
+    comment TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(user_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (restroom_id)
+        REFERENCES restrooms(restroom_id)
+        ON DELETE CASCADE
+);
