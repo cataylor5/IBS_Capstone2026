@@ -1,0 +1,1 @@
+PostgreSQL schema changes and sample-data scripts go here. Keep scripts that let both contributors reproduce the database structure.
