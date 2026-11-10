@@ -1,218 +1,132 @@
 package io.github.cataylor5.ibs
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.google.android.gms.location.CurrentLocationRequest
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.LaunchedEffect
 
 @Composable
 fun CurrentLocationButton(
-    onLocationSelected: (Double, Double) -> Unit,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    onStatusChanged: (String, Boolean) -> Unit = { _, _ -> }
+    viewModel: TripPlanningViewModel,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    // This gives us access to Android services and settings.
-
-    val locationClient = remember(context) {
-        LocationServices.getFusedLocationProviderClient(context)
+    val activity = context.findActivity()
+    var showRationale by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    val permissions = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
+    fun granted() = permissions.any {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
-    // This is the service we ask for a location reading.
-
-    val cancellation = remember { CancellationTokenSource() }
-    // This lets us cancel a request when this component leaves the screen.
-
-    var isLoading by remember { mutableStateOf(false) }
-    var status by remember {
-        mutableStateOf("Use your location as the trip's starting point.")
-    }
-    var permissionDenied by remember { mutableStateOf(false) }
-    // These values control the button and its feedback.
-
-
-    LaunchedEffect(status, isLoading) {
-        onStatusChanged(status, isLoading)
-    }
-// Let the trip form display feedback below the starting-location field.
-    DisposableEffect(Unit) {
-        onDispose {
-            cancellation.cancel()
-        }
-    }
-    // Stop an outstanding request when this component is removed.
-
-    fun fetchLocation() {
-        val hasFinePermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val hasCoarsePermission = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        // Check the current permission before each request.
-
-        if (!hasFinePermission && !hasCoarsePermission) {
-            isLoading = false
-            permissionDenied = true
-            status = "Location permission is off."
-            return
-        }
-
-        permissionDenied = false
-        isLoading = true
-        status = "Getting your location…"
-
-        val request = CurrentLocationRequest.Builder()
-            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-            .setMaxUpdateAgeMillis(0)
-            .setDurationMillis(15_000)
-            .build()
-        // Ask for a fresh reading, with a request duration of 15 seconds.
-
-        try {
-            locationClient.getCurrentLocation(
-                request,
-                cancellation.token
-            ).addOnSuccessListener { location ->
-                if (!cancellation.token.isCancellationRequested) {
-                    isLoading = false
-
-                    if (location != null) {
-                        onLocationSelected(
-                            location.latitude,
-                            location.longitude
-                        )
-                        // Pass the coordinates back to the home screen.
-
-                        status = if (hasFinePermission) {
-                            "Current location selected."
-                        } else {
-                            "Approximate location selected."
-                        }
-                    } else {
-                        status =
-                            "No location received. Check that device location is on, then try again."
-                    }
-                }
-            }.addOnFailureListener {
-                if (!cancellation.token.isCancellationRequested) {
-                    isLoading = false
-                    status =
-                        "Couldn't get your location. Check device location settings and try again."
-                }
-            }
-        } catch (error: SecurityException) {
-            isLoading = false
-            permissionDenied = true
-            status = "Location permission changed. Please allow access again."
-        }
-        // Handle a permission change that occurs during the request.
+    fun needsRationale() = activity != null && permissions.any {
+        ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allowed =
-            permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                    permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-
-        if (allowed) {
-            fetchLocation()
-        } else {
-            isLoading = false
-            permissionDenied = true
-            status =
-                "Location access wasn't granted. You can enable it in app settings."
-        }
-    }
-    // Continue after Android returns the user's permission choice.
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        Button(
-            onClick = {
-                val hasPermission =
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED ||
-                            ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACCESS_COARSE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
+        // Recheck the actual grants; do not cache permission state in the ViewModel.
+        val allowed = granted()
+        val stillPending = viewModel.origin.operation == EndpointOperation.PERMISSION
+        viewModel.gpsPermissionResult(allowed)
+        if (stillPending && !allowed && !needsRationale()) showSettings = true
+    }
 
-                if (hasPermission) {
-                    fetchLocation()
-                } else {
-                    permissionLauncher.launch(
-                        arrayOf(
-                            Manifest.permission.ACCESS_FINE_LOCATION,
-                            Manifest.permission.ACCESS_COARSE_LOCATION
-                        )
-                    )
-                }
-            },
-            enabled = !isLoading,
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = if (compact) {
-                    if (isLoading) "…" else "GPS"
-                } else {
-                    if (isLoading) "Finding location…" else "Use my location"
-                }
-            )
-// Compact mode keeps the button small enough to sit beside a field.
-        }
-
-        if (!compact) {
-            Text(status)
-        }
-
-        if (permissionDenied && !compact) {
-            TextButton(
-                onClick = {
-                    val intent = Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.parse("package:${context.packageName}")
-                    )
-                    context.startActivity(intent)
-                }
-            ) {
-                Text("Open app settings")
+    val busy = viewModel.origin.operation == EndpointOperation.GPS ||
+        viewModel.origin.operation == EndpointOperation.PERMISSION
+    Button(
+        onClick = {
+            viewModel.beginGpsPermission()
+            when {
+                granted() -> viewModel.gpsPermissionResult(true)
+                needsRationale() -> showRationale = true
+                else -> permissionLauncher.launch(permissions)
             }
-            // This gives the user a way to change a denied permission.
+        },
+        enabled = !busy,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+        modifier = modifier.semantics { contentDescription = "Use current location" }
+    ) {
+        if (busy) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            Text("GPS")
         }
     }
+
+    if (showRationale) {
+        AlertDialog(
+            onDismissRequest = {
+                showRationale = false
+                viewModel.cancelGpsPermission()
+            },
+            title = { Text("Use your location") },
+            text = { Text("IBS uses your location once to select the trip's starting point. You can search for a starting location instead.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRationale = false
+                    permissionLauncher.launch(permissions)
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showRationale = false
+                    viewModel.cancelGpsPermission()
+                }) { Text("Cancel") }
+            }
+        )
+    }
+    if (showSettings) {
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            title = { Text("Location permission is off") },
+            text = { Text("Allow location in app settings, then return and tap GPS. Manual starting-location search also works without location permission.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSettings = false
+                    context.startActivity(Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null)
+                    ))
+                }) { Text("Open app settings") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSettings = false }) { Text("Use manual search") }
+            }
+        )
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.libraries.places.api.Places
 import io.github.cataylor5.ibs.ui.theme.IBSTheme
 // These imports handle alignment, spacing, previews, and our existing theme.
@@ -72,7 +73,7 @@ class MainActivity : ComponentActivity() {
                 Places.initializeWithNewPlacesApiEnabled(applicationContext, apiKey)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("Places", "Places initialization failed. Check local configuration.")
         }
         // Initialize Places SDK safely with the key from AndroidManifest.xml.
 
@@ -99,13 +100,16 @@ class MainActivity : ComponentActivity() {
 
 
 @Composable
-fun IBSHomeScreen(modifier: Modifier = Modifier) {
+fun IBSHomeScreen(
+    modifier: Modifier = Modifier,
+    tripViewModel: TripPlanningViewModel = viewModel()
+) {
     // This function describes what appears on the home screen.
 
     var showRestrooms by rememberSaveable { mutableStateOf(false) }
     // This starts with the sample list hidden and remembers the selection.
 
-    var freePublicOnly by rememberSaveable { mutableStateOf(false) }
+    val freePublicOnly = tripViewModel.freePublicOnly
 // This remembers whether the free-public-restroom filter is enabled.
 
     var selectedRestroomId by rememberSaveable {
@@ -119,14 +123,7 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
     }
 // Find the sample record whose ID matches the user's selection.
 
-    var startLatitude by rememberSaveable {
-        mutableStateOf<Double?>(null)
-    }
-    var startLongitude by rememberSaveable {
-        mutableStateOf<Double?>(null)
-    }
-// These hold the selected starting coordinates.
-// Null means a starting location has not been selected.
+    // Trip endpoints and preferences live in the saved-state ViewModel.
 
     if (selectedRestroom != null) {
         RestroomDetailsDialog(
@@ -187,14 +184,7 @@ fun IBSHomeScreen(modifier: Modifier = Modifier) {
         }
 
         TripPlanningForm(
-            startLatitude = startLatitude,
-            startLongitude = startLongitude,
-            onLocationSelected = { latitude, longitude ->
-                startLatitude = latitude
-                startLongitude = longitude
-            },
-            freePublicOnly = freePublicOnly,
-            onFreePublicOnlyChange = { freePublicOnly = it },
+            viewModel = tripViewModel,
             modifier = Modifier.fillMaxWidth()
         )
 // The form and restroom list now share one free-public preference.
