@@ -18,9 +18,7 @@ if (mapsSecretsFile.exists()) {
 
 android {
     namespace = "io.github.cataylor5.ibs"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.cataylor5.ibs"
@@ -71,9 +69,17 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.play.services.location)
 // This adds Google's device-location service.
+    implementation(libs.places)
+    implementation("com.google.android.material:material:1.12.0")
+// Supplies the Material View theme attributes required by the Places search widget.
+// This adds Google's Places SDK for destination search.
     implementation("androidx.media3:media3-exoplayer:1.11.1")
 // Plays the video stored inside the app.
 
     implementation("androidx.media3:media3-ui:1.11.1")
 // Provides the view that displays the video.
+
+    // Force newer versions to resolve a namespace conflict in older transitive dependencies
+    implementation("androidx.vectordrawable:vectordrawable:1.1.0")
+    implementation("androidx.vectordrawable:vectordrawable-animated:1.1.0")
 }

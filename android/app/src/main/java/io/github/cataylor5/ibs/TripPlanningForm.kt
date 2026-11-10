@@ -23,10 +23,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import android.app.Activity
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableIntStateOf
+import com.google.android.libraries.places.api.model.Place
+import com.google.android.libraries.places.api.Places
+import com.google.android.libraries.places.api.net.FetchPlaceRequest
+import com.google.android.libraries.places.widget.PlaceAutocomplete
 
 @Composable
 fun TripPlanningForm(
@@ -49,10 +59,20 @@ fun TripPlanningForm(
     var destination by rememberSaveable {
         mutableStateOf("")
     }
-    // Remember the text entered into both fields.
+    
+    var destinationId by rememberSaveable {
+        mutableStateOf<String?>(null)
+    }
+    var destinationLat by rememberSaveable {
+        mutableStateOf<Double?>(null)
+    }
+    var destinationLng by rememberSaveable {
+        mutableStateOf<Double?>(null)
+    }
+    // Remember the text entered into both fields, and coordinates for the destination.
 
     var maxDetourMinutes by rememberSaveable {
-        mutableStateOf(10)
+        mutableIntStateOf(10)
     }
     // Default to 10 extra driving minutes.
 
@@ -94,6 +114,59 @@ fun TripPlanningForm(
 // Looks up the full details of the selected stop.
 
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+
+    var destinationError by remember { mutableStateOf<String?>(null) }
+    var destinationRequest by remember { mutableIntStateOf(0) }
+
+    val autocompleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            val prediction = PlaceAutocomplete.getPredictionFromIntent(data)
+            if (prediction != null) {
+                destinationRequest++
+                val requestNumber = destinationRequest
+                destination = prediction.getFullText(null).toString()
+                destinationId = null
+                destinationLat = null
+                destinationLng = null
+                destinationError = null
+                showPreview = false
+                val request = FetchPlaceRequest.builder(
+                    prediction.placeId,
+                    listOf(Place.Field.ID, Place.Field.LOCATION)
+                ).setSessionToken(PlaceAutocomplete.getSessionTokenFromIntent(data)).build()
+                Places.createClient(context).fetchPlace(request)
+                    .addOnSuccessListener { response ->
+                        if (destinationRequest == requestNumber) {
+                            val location = response.place.location
+                            if (location != null) {
+                                destinationId = prediction.placeId
+                                destinationLat = location.latitude
+                                destinationLng = location.longitude
+                            } else {
+                                destinationError = "This destination has no location. Choose another result."
+                            }
+                        }
+                    }
+                    .addOnFailureListener { error ->
+                        Log.e("Places", "Destination details failed", error)
+                        if (destinationRequest == requestNumber) {
+                            destinationError = "Couldn't load this destination. Please search again."
+                        }
+                    }
+            } else {
+                destinationError = "No destination was returned. Please search again."
+            }
+        } else if (result.resultCode != Activity.RESULT_CANCELED) {
+            val status = data?.let { PlaceAutocomplete.getResultStatusFromIntent(it) }
+            Log.e("Places", "Autocomplete error: ${status?.statusMessage}")
+            destinationError = "Destination search is unavailable. Please try again."
+        }
+    }
+    // Use Autocomplete (New), then resolve the selected prediction's coordinates.
 
     val hasCoordinates =
         startLatitude != null && startLongitude != null
@@ -105,7 +178,7 @@ fun TripPlanningForm(
     }
 
     val destinationMissing = destination.isBlank()
-    // Check that a starting point and destination are available.
+    // The demo preview accepts typed destinations; search optionally verifies them.
 
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -254,16 +327,44 @@ fun TripPlanningForm(
             OutlinedTextField(
                 value = destination,
                 onValueChange = {
+                    destinationRequest++
+                    destinationError = null
                     destination = it
+                    destinationId = null
+                    destinationLat = null
+                    destinationLng = null
                     showPreview = false
                 },
                 label = { Text("Destination") },
                 placeholder = { Text("Where are you going?") },
                 singleLine = true,
-                isError = attemptedPreview && destinationMissing,
+                isError = destinationError != null || (attemptedPreview && destinationMissing),
+                trailingIcon = {
+                    TextButton(
+                        onClick = {
+                            destinationError = null
+                            focusManager.clearFocus()
+                            try {
+                                val intent = PlaceAutocomplete.IntentBuilder()
+                                    .setInitialQuery(destination)
+                                    .build(context)
+                                autocompleteLauncher.launch(intent)
+                            } catch (error: Exception) {
+                                Log.e("Places", "Couldn't open destination search", error)
+                                destinationError = "Couldn't open destination search. Please try again."
+                            }
+                        }
+                    ) {
+                        Text("Search")
+                    }
+                },
                 supportingText = {
-                    if (attemptedPreview && destinationMissing) {
+                    if (destinationError != null) {
+                        Text(destinationError!!)
+                    } else if (attemptedPreview && destinationMissing) {
                         Text("Enter a destination.")
+                    } else if (destinationId == null) {
+                        Text("Enter a destination for preview, or Search to verify it.")
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -367,7 +468,12 @@ fun TripPlanningForm(
                         Text("From: ${startingPoint.trim()}")
                     }
 
-                    Text("To: ${destination.trim()}")
+                    if (destinationId != null) {
+                        Text("To: ${destination.trim()}")
+                        Text("$destinationLat, $destinationLng")
+                    } else {
+                        Text("To: ${destination.trim()} (Not verified)")
+                    }
 
                     Text(
                         "Maximum detour: $maxDetourMinutes " +

@@ -1,6 +1,7 @@
 package io.github.cataylor5.ibs
 // This places the file in our app's existing package.
 
+import android.content.pm.PackageManager
 import androidx.compose.material3.FilterChip
 // This provides a small selectable control for filtering results.
 
@@ -50,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.google.android.libraries.places.api.Places
 import io.github.cataylor5.ibs.ui.theme.IBSTheme
 // These imports handle alignment, spacing, previews, and our existing theme.
 
@@ -62,6 +64,17 @@ class MainActivity : ComponentActivity() {
 
         super.onCreate(savedInstanceState)
         // This runs the normal Android screen setup.
+
+        try {
+            val applicationInfo = packageManager.getApplicationInfo(packageName, PackageManager.GET_META_DATA)
+            val apiKey = applicationInfo.metaData?.getString("com.google.android.geo.API_KEY")
+            if (apiKey != null && apiKey.isNotBlank() && !Places.isInitialized()) {
+                Places.initializeWithNewPlacesApiEnabled(applicationContext, apiKey)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        // Initialize Places SDK safely with the key from AndroidManifest.xml.
 
         enableEdgeToEdge()
         // This lets the app draw behind the system bars.
