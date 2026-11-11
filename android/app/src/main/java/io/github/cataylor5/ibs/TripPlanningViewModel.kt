@@ -20,6 +20,83 @@ class TripPlanningViewModel(
 ) : AndroidViewModel(application) {
     private val service = EndpointLocationService(application)
     private val jobs = mutableMapOf<EndpointTarget, Job>()
+    private val routeRepository = RouteRepository()
+    private var routeJob: Job? = null
+    var routeState by mutableStateOf(RouteState(error =
+        if (saved.get<Boolean>("route_requested") == true)
+            "Tap Start now to recalculate your route." else null))
+        private set
+
+    fun clearRoute() {
+        // Invalidate first, so cancellation or a late response cannot restore the old route.
+        routeState = routeState.clear()
+        routeJob?.cancel()
+        routeJob = null
+        saved["route_requested"] = false
+        saved.remove<Long>("route_stop_id")
+        saved.remove<String>("route_stop_name")
+    }
+
+    private fun interruptRouteRequest() {
+        if (routeState.loading) clearRoute()
+    }
+
+    val routeStopName: String? get() = routeState.route?.stop?.name ?: saved.get<String>("route_stop_name")
+
+    fun startRoute() = calculateRoute(routeState.route?.stop?.id ?: saved.get<Long>("route_stop_id"))
+
+    fun routeViaRestroom(id: Long) {
+        if (id <= 0 || routeState.route?.stop?.id == id) return
+        calculateRoute(id)
+    }
+
+    fun removeRestroomStop() {
+        val restored = routeState.withoutStop()
+        if (restored == routeState && saved.get<Long>("route_stop_id") == null) return
+        routeState = if (restored == routeState) routeState.clear() else restored
+        saved.remove<Long>("route_stop_id")
+        saved.remove<String>("route_stop_name")
+        routeJob?.cancel()
+        routeJob = null
+        saved["route_requested"] = true
+    }
+
+    private fun calculateRoute(restroomId: Long?) {
+        if (!canPreview || routeState.loading) {
+            if (!canPreview) preview()
+            return
+        }
+        val from = origin.endpoint
+        val to = destination.endpoint
+        val allowance = maxDetourMinutes
+        val freeOnly = freePublicOnly
+        routeState = routeState.begin(stopId = restroomId, keepRoute = restroomId != null)
+        val ticket = routeState.revision
+        saved["route_requested"] = true
+        routeJob = viewModelScope.launch {
+            try {
+                val result = withTimeout(35_000) { routeRepository.compute(from, to, restroomId, allowance, freeOnly) }
+                if (routeState.revision == ticket) {
+                    routeState = routeState.complete(ticket, result)
+                    if (result.stop != null) {
+                        saved["route_stop_id"] = result.stop.id
+                        saved["route_stop_name"] = result.stop.name
+                    } else {
+                        saved.remove<Long>("route_stop_id")
+                        saved.remove<String>("route_stop_name")
+                    }
+                    closePreview()
+                }
+            } catch (_: TimeoutCancellationException) {
+                routeState = routeState.fail(ticket, "Route calculation timed out. Please try again.")
+            } catch (cancelled: CancellationException) {
+                routeState = routeState.fail(ticket, "Route calculation was interrupted. Tap Start now to retry.")
+                throw cancelled
+            } catch (error: Exception) {
+                routeState = routeState.fail(ticket, routeErrorMessage(error))
+            }
+        }
+    }
 
     var origin by mutableStateOf(restore(EndpointTarget.ORIGIN))
         private set
@@ -79,6 +156,7 @@ class TripPlanningViewModel(
     }
 
     private fun tripChanged() {
+        clearRoute()
         closePreview()
         selectStop(null)
         attemptedPreview = false
@@ -125,6 +203,7 @@ class TripPlanningViewModel(
     }
 
     fun beginSearch(target: EndpointTarget) {
+        interruptRouteRequest()
         cancelWork(target)
         closePreview()
         val next = state(target).begin(EndpointOperation.AUTOCOMPLETE)
@@ -174,6 +253,7 @@ class TripPlanningViewModel(
     }
 
     fun beginGpsPermission() {
+        interruptRouteRequest()
         val target = EndpointTarget.ORIGIN
         cancelWork(target)
         closePreview()

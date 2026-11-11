@@ -99,4 +99,30 @@ class TripPlanningViewModelTest {
         assertFalse(restored.freePublicOnly)
         assertNull(restored.selectedStopId)
     }
+
+    @Test fun restoresStopIdentityWithoutGeometryAndCanRemoveIt() = onMain {
+        val saved = selectedEndpoints()
+        saved["route_requested"] = true
+        saved["route_stop_id"] = 12L
+        saved["route_stop_name"] = "Test restroom"
+        val vm = create(saved)
+        assertEquals("Test restroom", vm.routeStopName)
+        assertNull(vm.routeState.route)
+        assertFalse(vm.routeState.loading)
+        vm.removeRestroomStop()
+        assertNull(vm.routeStopName)
+        assertNull(saved.get<Long>("route_stop_id"))
+        assertNull(create(saved).routeStopName)
+    }
+
+    @Test fun editingEndpointDiscardsRestoredRestroomSelection() = onMain {
+        val saved = selectedEndpoints()
+        saved["route_stop_id"] = 12L
+        saved["route_stop_name"] = "Test restroom"
+        val vm = create(saved)
+        vm.edit(EndpointTarget.DESTINATION, "New destination")
+        assertNull(vm.routeStopName)
+        assertNull(saved.get<Long>("route_stop_id"))
+        assertNull(vm.routeState.route)
+    }
 }

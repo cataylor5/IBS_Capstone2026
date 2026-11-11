@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -33,6 +34,8 @@ import com.google.android.libraries.places.widget.PlaceAutocomplete
 @Composable
 fun TripPlanningForm(
     viewModel: TripPlanningViewModel,
+    onStartRoute: () -> Unit,
+    routeAccessMessage: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -189,7 +192,7 @@ fun TripPlanningForm(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Preview trip") }
             Text(
-                "Both locations must be selected before preview. Restroom stops and detour times are fictional demo data; no route is calculated.",
+                "Select both locations, preview your trip, then tap Start now to calculate a driving route. Restroom stops remain fictional demo data.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -201,11 +204,11 @@ fun TripPlanningForm(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Your planned stop", style = MaterialTheme.typography.titleLarge)
+                Text("Selected demo stop", style = MaterialTheme.typography.titleLarge)
                 Text(selectedStop.name, style = MaterialTheme.typography.titleMedium)
                 Text(selectedStop.accessDescription)
                 Text("Demo detour: ${selectedStop.detourMinutes} extra minutes")
-                Text("Fictional demo stop. No route has been calculated.", style = MaterialTheme.typography.bodySmall)
+                Text("Fictional demo stop. It is not added to the driving route.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         onClick = { focusManager.clearFocus(); viewModel.preview() },
@@ -234,7 +237,24 @@ fun TripPlanningForm(
                     Text(if (viewModel.freePublicOnly) "Availability: Free public restrooms."
                         else "Availability: Any, including paid and customer-only restrooms.")
                     Text("Detour time includes returning to the route, but not time spent at the restroom.")
-                    Text("Endpoints selected. No route has been calculated. The following stops and times are fictional demo data.")
+                    viewModel.routeStopName?.let {
+                        Text("Current restroom stop: $it. Start now recalculates the route through this stop.")
+                        if (viewModel.routeState.route == null) {
+                            TextButton(onClick = viewModel::removeRestroomStop) { Text("Remove restroom stop") }
+                        }
+                    } ?: Text("Start now calculates a driving route between these locations.")
+                    Text("Choose a database restroom using Find a Restroom and Use this stop. Fictional demo stops are not added.")
+                    if (viewModel.routeState.loading) {
+                        CircularProgressIndicator()
+                        Text("Calculating route…")
+                    }
+                    viewModel.routeState.error?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                    routeAccessMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                    Text("The following stops and detour times are fictional demo data.")
                     DemoTripStops(
                         maxDetourMinutes = viewModel.maxDetourMinutes,
                         freePublicOnly = viewModel.freePublicOnly,
@@ -244,6 +264,12 @@ fun TripPlanningForm(
                 }
             },
             confirmButton = {
+                Button(
+                    onClick = onStartRoute,
+                    enabled = viewModel.canPreview && !viewModel.routeState.loading
+                ) { Text(if (viewModel.routeState.loading) "Calculating…" else "Start now") }
+            },
+            dismissButton = {
                 TextButton(onClick = { viewModel.closePreview() }) { Text("Back to planning") }
             }
         )

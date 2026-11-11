@@ -16,6 +16,8 @@ import androidx.activity.enableEdgeToEdge
 // These imports handle starting the Android screen and displaying Compose content.
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,16 +36,25 @@ import androidx.compose.material3.Text
 // These imports provide the buttons, cards, text, and screen layout.
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 // These imports let the screen remember and respond to changing values.
 
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.LatLngBounds
+import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.rememberUpdatedMarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
 
 import androidx.compose.ui.Alignment
@@ -102,7 +113,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun IBSHomeScreen(
     modifier: Modifier = Modifier,
-    tripViewModel: TripPlanningViewModel = viewModel()
+    tripViewModel: TripPlanningViewModel = viewModel(),
+    restroomsViewModel: RestroomsViewModel = viewModel()
 ) {
     // This function describes what appears on the home screen.
 
@@ -112,26 +124,34 @@ fun IBSHomeScreen(
     val freePublicOnly = tripViewModel.freePublicOnly
 // This remembers whether the free-public-restroom filter is enabled.
 
-    var selectedRestroomId by rememberSaveable {
-        mutableStateOf<String?>(null)
+    val backendAccess = rememberLocalBackendAccess(
+        restroomsViewModel, onStartRoute = tripViewModel::startRoute,
+        onRouteViaStop = tripViewModel::routeViaRestroom
+    )
+    val routeSection = remember { BringIntoViewRequester() }
+    val activeRoute = tripViewModel.routeState.route
+    LaunchedEffect(activeRoute, tripViewModel.routeState.loading, tripViewModel.routeState.revision) {
+        if (activeRoute != null && !tripViewModel.routeState.loading && tripViewModel.routeState.error == null) {
+            restroomsViewModel.closeDetails()
+            withFrameNanos { }
+            routeSection.bringIntoView()
+        }
     }
-// This remembers the selected restroom's ID.
-// A null value means no restroom details are open.
-
-    val selectedRestroom = sampleRestrooms.find {
-        it.id == selectedRestroomId
+    LaunchedEffect(showRestrooms) {
+        if (showRestrooms) backendAccess.request(RestroomRequest.LOAD, null)
     }
-// Find the sample record whose ID matches the user's selection.
-
-    // Trip endpoints and preferences live in the saved-state ViewModel.
-
-    if (selectedRestroom != null) {
-        RestroomDetailsDialog(
-            restroom = selectedRestroom,
-            onClose = { selectedRestroomId = null }
-        )
-        // Clearing the selected ID removes the popup.
+    LaunchedEffect(restroomsViewModel.selectedId) {
+        val id = restroomsViewModel.selectedId
+        if (id != null && restroomsViewModel.detail == null &&
+            !restroomsViewModel.detailLoading && restroomsViewModel.detailError == null) {
+            backendAccess.request(RestroomRequest.DETAILS, id)
+        }
     }
+    BackendRestroomDetailsDialog(
+        viewModel = restroomsViewModel,
+        access = backendAccess,
+        tripViewModel = tripViewModel
+    )
 
     Column(
         modifier = modifier
@@ -161,7 +181,7 @@ fun IBSHomeScreen(
         // This displays the introductory message.
 
         Text(
-            text = "Demo mode: the restroom examples below are fictional.",
+            text = "Trip previews use fictional stops. The restroom list uses IBS database records.",
             style = MaterialTheme.typography.bodyMedium
         )
         // This makes it clear that we are displaying practice data.
@@ -175,7 +195,7 @@ fun IBSHomeScreen(
         ) {
             Text(
                 text = if (showRestrooms) {
-                    "Hide sample restrooms"
+                    "Hide restrooms"
                 } else {
                     "Find a Restroom"
                 }
@@ -185,79 +205,36 @@ fun IBSHomeScreen(
 
         TripPlanningForm(
             viewModel = tripViewModel,
+            onStartRoute = { backendAccess.request(RestroomRequest.START_ROUTE, null) },
+            routeAccessMessage = backendAccess.message,
             modifier = Modifier.fillMaxWidth()
         )
 // The form and restroom list now share one free-public preference.
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            IBSMap(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(300.dp)
-            )
+        Card(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(routeSection)) {
+            Column {
+                activeRoute?.let {
+                    DrivingRouteSummary(route = it, onClear = tripViewModel::clearRoute,
+                        onRemoveStop = tripViewModel::removeRestroomStop)
+                }
+                IBSMap(
+                    modifier = Modifier.fillMaxWidth().height(300.dp),
+                    route = activeRoute
+                )
+            }
         }
 // This gives the real map a fixed-height space on the home screen.
 
         if (showRestrooms) {
-            // This section appears after the user requests the sample list.
-
-            Text(
-                text = "Sample restrooms",
-                style = MaterialTheme.typography.titleLarge
+            RestroomListSection(
+                viewModel = restroomsViewModel,
+                freePublicOnly = freePublicOnly,
+                access = backendAccess,
+                tripViewModel = tripViewModel
             )
-
-
-
-            val visibleRestrooms = sampleRestrooms.filter { restroom ->
-                // This builds a list containing only the records we want to display.
-
-                !freePublicOnly ||
-                        (restroom.accessType == "public" && restroom.feeRequired == false)
-                // With the filter off, include everything.
-                // With it on, require public access and a confirmed lack of fees.
-            }
-
-            Text(
-                text = "Results: ${visibleRestrooms.size}",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            // This displays how many sample records match the current filter.
-
-            if (visibleRestrooms.isEmpty()) {
-                Text(
-                    text = "No restrooms match this filter.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                // This explains an empty result instead of leaving a blank area.
-            }
-
-            visibleRestrooms.forEach { restroom ->
-                // This creates one card for each matching restroom.
-
-                val accessLabel = when (restroom.accessType) {
-                    "public" -> "Public access"
-                    "customers_only" -> "Customers only"
-                    else -> "Access unknown"
-                }
-                // This turns the stored access value into readable wording.
-
-                val feeLabel = when (restroom.feeRequired) {
-                    true -> "Fee required"
-                    false -> "No restroom fee"
-                    null -> "Fee unknown"
-                }
-                // This describes the fee without treating missing information as free.
-
-                RestroomCard(
-                    name = restroom.name,
-                    accessDescription = "$accessLabel • $feeLabel",
-                    onViewDetails = { selectedRestroomId = restroom.id }
-                )
-// Pressing this card's details button selects this restroom.
-            }
         } else {
             Text(
-                text = "Tap Find a Restroom to explore the sample list.",
+                text = "Tap Find a Restroom to load the IBS restroom list.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }
@@ -362,24 +339,56 @@ fun RestroomDetailsDialog(
 }
 
 @Composable
-fun IBSMap(modifier: Modifier = Modifier) {
+fun IBSMap(modifier: Modifier = Modifier, route: DrivingRoute? = null) {
     val startingLocation = LatLng(36.0726, -79.7920)
-    // This sets our starting map view around Greensboro.
-
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(
-            startingLocation,
-            12f
-        )
+        position = CameraPosition.fromLatLngZoom(startingLocation, 12f)
     }
-    // This holds the map's viewing position and starting zoom level.
-
+    var mapLoaded by remember { mutableStateOf(false) }
+    val points = remember(route) {
+        route?.points?.map { LatLng(it.latitude, it.longitude) } ?: emptyList()
+    }
+    LaunchedEffect(route, mapLoaded) {
+        if (route != null && mapLoaded && points.isNotEmpty()) {
+            val bounds = LatLngBounds.builder().apply {
+                points.forEach { include(it) }
+                include(LatLng(route.origin.latitude!!, route.origin.longitude!!))
+                include(LatLng(route.destination.latitude!!, route.destination.longitude!!))
+                route.stop?.let { include(LatLng(it.latitude, it.longitude)) }
+            }.build()
+            val update = if (bounds.northeast == bounds.southwest)
+                CameraUpdateFactory.newLatLngZoom(bounds.center, 16f)
+            else CameraUpdateFactory.newLatLngBounds(bounds, 64)
+            cameraPositionState.animate(update)
+        }
+    }
     GoogleMap(
         modifier = modifier,
         cameraPositionState = cameraPositionState,
-        uiSettings = MapUiSettings(
-            zoomControlsEnabled = true
-        )
-    )
-    // This displays the map with plus and minus zoom buttons.
+        uiSettings = MapUiSettings(zoomControlsEnabled = true),
+        onMapLoaded = { mapLoaded = true }
+    ) {
+        if (route != null) {
+            Polyline(points = points, color = MaterialTheme.colorScheme.primary, width = 12f)
+            route.stop?.let { stop ->
+                val stopIcon = remember { BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE) }
+                Marker(
+                    state = rememberUpdatedMarkerState(position = LatLng(stop.latitude, stop.longitude)),
+                    title = "Restroom: ${stop.name}",
+                    snippet = stop.address,
+                    icon = stopIcon
+                )
+            }
+            Marker(
+                state = rememberUpdatedMarkerState(position = LatLng(route.origin.latitude!!, route.origin.longitude!!)),
+                title = "Start",
+                snippet = route.origin.displayText
+            )
+            Marker(
+                state = rememberUpdatedMarkerState(position = LatLng(route.destination.latitude!!, route.destination.longitude!!)),
+                title = "Destination",
+                snippet = route.destination.displayText
+            )
+        }
+    }
 }

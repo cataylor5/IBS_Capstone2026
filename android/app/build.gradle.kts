@@ -34,22 +34,36 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "RESTROOM_API_BASE_URL", '"' + "http://10.0.2.2:3000/" + '"')
+        }
         release {
+            buildConfigField("String", "RESTROOM_API_BASE_URL", '"'.toString() + '"')
             optimization {
                 enable = false
             }
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }
 
+// Navigation bundles the Maps SDK; exclude the standalone copy from every dependency.
+configurations.configureEach {
+    exclude(group = "com.google.android.gms", module = "play-services-maps")
+}
+
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
+    implementation("com.google.android.libraries.navigation:navigation:8.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation(libs.maps.compose)
 // This adds Google's map components for Compose.
     implementation(platform(libs.androidx.compose.bom))
@@ -64,6 +78,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1")
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)

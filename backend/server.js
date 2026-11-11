@@ -3,12 +3,17 @@ const express = require("express");
 const session = require("express-session");
 const crypto = require("crypto");
 const db = require("./db");
+const { createRouteHandler } = require("./routes");
+
+if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.startsWith("REPLACE_")) {
+    throw new Error("Set SESSION_SECRET in backend/.env before starting the API.");
+}
 
 const app = express();
 app.use(express.json());
 
 app.use(session({
-    secret: "ibs-demo-secret-change-later",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
@@ -67,6 +72,24 @@ app.get("/api/health", async (req, res, next) => {
         res.json({ status: "OK", database: "connected" });
     } catch (err) { next(err); }
 });
+
+// Resolve a selected database restroom on the server; never trust client stop coordinates.
+app.post("/api/routes", createRouteHandler({
+    lookupRestroom: async id => {
+        const result = await db.query(
+            `SELECT r.*, b.name AS business_name, b.address, b.latitude, b.longitude
+             FROM restrooms r JOIN businesses b ON b.business_id = r.business_id
+             WHERE r.restroom_id = $1`, [id]
+        );
+        const row = result.rows[0];
+        return row && {
+            id: row.restroom_id, name: row.business_name, address: row.address,
+            latitude: row.latitude, longitude: row.longitude,
+            accessType: row.access_type, requiresPurchase: row.requires_purchase,
+            feeRequired: row.fee_required ?? null
+        };
+    }
+}));
 
 app.get("/api/session", guest, (req, res) => {
     res.json({ user_id: req.session.userId });
@@ -344,10 +367,14 @@ app.get("/api/places/search", async (req, res, next) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-    console.error(err);
+    // Error payloads can contain SQL and personal data; log only a diagnostic code.
+    const code = typeof err.code === "string" && /^[A-Z0-9_]+$/.test(err.code) ? err.code : "UNKNOWN";
+    console.error("IBS API request failed:", code);
     res.status(500).json({ error: "Server error" });
 });
 
-app.listen(3000, "0.0.0.0", () => {
-    console.log("IBS API running on http://localhost:3000");
+const port = Number(process.env.PORT || 3000);
+const host = process.env.HOST || "127.0.0.1";
+app.listen(port, host, () => {
+    console.log("IBS API listening on configured host and port.");
 });
