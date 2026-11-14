@@ -12,7 +12,7 @@ internal fun RestroomRouteAction(
     viewModel: TripPlanningViewModel,
     access: LocalBackendAccess
 ) {
-    val onRoute = viewModel.routeState.route?.stop?.id == restroom.id
+    val onRoute = viewModel.routeState.route?.stop?.id == restroom.id && !viewModel.businessesReady
     val calculating = viewModel.routeState.loading && viewModel.routeState.requestedStopId == restroom.id
     TextButton(
         onClick = { access.request(RestroomRequest.ROUTE_VIA_STOP, restroom.id) },

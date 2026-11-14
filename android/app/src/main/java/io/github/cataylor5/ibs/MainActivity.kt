@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 // These imports handle starting the Android screen and displaying Compose content.
 
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -100,7 +101,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize()
                     ) { innerPadding ->
                         IBSHomeScreen(
-                            modifier = Modifier.padding(innerPadding)
+                            modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
                         )
                     }
                 }
@@ -116,129 +117,7 @@ fun IBSHomeScreen(
     tripViewModel: TripPlanningViewModel = viewModel(),
     restroomsViewModel: RestroomsViewModel = viewModel()
 ) {
-    // This function describes what appears on the home screen.
-
-    var showRestrooms by rememberSaveable { mutableStateOf(false) }
-    // This starts with the sample list hidden and remembers the selection.
-
-    val freePublicOnly = tripViewModel.freePublicOnly
-// This remembers whether the free-public-restroom filter is enabled.
-
-    val backendAccess = rememberLocalBackendAccess(
-        restroomsViewModel, onStartRoute = tripViewModel::startRoute,
-        onRouteViaStop = tripViewModel::routeViaRestroom
-    )
-    val routeSection = remember { BringIntoViewRequester() }
-    val activeRoute = tripViewModel.routeState.route
-    LaunchedEffect(activeRoute, tripViewModel.routeState.loading, tripViewModel.routeState.revision) {
-        if (activeRoute != null && !tripViewModel.routeState.loading && tripViewModel.routeState.error == null) {
-            restroomsViewModel.closeDetails()
-            withFrameNanos { }
-            routeSection.bringIntoView()
-        }
-    }
-    LaunchedEffect(showRestrooms) {
-        if (showRestrooms) backendAccess.request(RestroomRequest.LOAD, null)
-    }
-    LaunchedEffect(restroomsViewModel.selectedId) {
-        val id = restroomsViewModel.selectedId
-        if (id != null && restroomsViewModel.detail == null &&
-            !restroomsViewModel.detailLoading && restroomsViewModel.detailError == null) {
-            backendAccess.request(RestroomRequest.DETAILS, id)
-        }
-    }
-    BackendRestroomDetailsDialog(
-        viewModel = restroomsViewModel,
-        access = backendAccess,
-        tripViewModel = tripViewModel
-    )
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            // This uses the available screen space.
-
-            .verticalScroll(rememberScrollState())
-            // This lets us scroll when the content exceeds the screen height.
-
-            .padding(24.dp),
-        // This adds space around the page's contents.
-
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-        // This adds consistent spacing between the items.
-    ) {
-        Text(
-            text = "IBS",
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-        // This displays the app title using our theme's main color.
-
-        Text(
-            text = "A bathroom break should be part of the route.",
-            style = MaterialTheme.typography.titleMedium
-        )
-        // This displays the introductory message.
-
-        Text(
-            text = "Trip previews use fictional stops. The restroom list uses IBS database records.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        // This makes it clear that we are displaying practice data.
-
-        Button(
-            onClick = { showRestrooms = !showRestrooms },
-            // Each tap switches the sample list between visible and hidden.
-
-            modifier = Modifier.fillMaxWidth()
-            // This makes the button fill the available width.
-        ) {
-            Text(
-                text = if (showRestrooms) {
-                    "Hide restrooms"
-                } else {
-                    "Find a Restroom"
-                }
-            )
-            // This changes the button's wording to match its next action.
-        }
-
-        TripPlanningForm(
-            viewModel = tripViewModel,
-            onStartRoute = { backendAccess.request(RestroomRequest.START_ROUTE, null) },
-            routeAccessMessage = backendAccess.message,
-            modifier = Modifier.fillMaxWidth()
-        )
-// The form and restroom list now share one free-public preference.
-
-        Card(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(routeSection)) {
-            Column {
-                activeRoute?.let {
-                    DrivingRouteSummary(route = it, onClear = tripViewModel::clearRoute,
-                        onRemoveStop = tripViewModel::removeRestroomStop)
-                }
-                IBSMap(
-                    modifier = Modifier.fillMaxWidth().height(300.dp),
-                    route = activeRoute
-                )
-            }
-        }
-// This gives the real map a fixed-height space on the home screen.
-
-        if (showRestrooms) {
-            RestroomListSection(
-                viewModel = restroomsViewModel,
-                freePublicOnly = freePublicOnly,
-                access = backendAccess,
-                tripViewModel = tripViewModel
-            )
-        } else {
-            Text(
-                text = "Tap Find a Restroom to load the IBS restroom list.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
+    DestinationTripFlow(modifier, tripViewModel, restroomsViewModel)
 }
 
 
@@ -286,7 +165,7 @@ fun IBSHomeScreenPreview() {
     IBSTheme {
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
             IBSHomeScreen(
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
             )
         }
     }

@@ -19,6 +19,11 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
         <activity
+            android:name=".RestroomReviewActivity"
+            android:exported="false"
+            android:label="Rate this restroom"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
             android:name=".LiveNavigationActivity"
             android:exported="false"
             android:label="IBS Navigation" />

@@ -20,7 +20,8 @@ internal class RouteRepository(
 ) {
     suspend fun compute(
         origin: TripEndpoint, destination: TripEndpoint,
-        restroomId: Long? = null, maxDetourMinutes: Int = 10, freePublicOnly: Boolean = false
+        restroomId: Long? = null, maxDetourMinutes: Int = 10, freePublicOnly: Boolean = false,
+        includeStopTravelTime: Boolean = false
     ): DrivingRoute =
         withContext(Dispatchers.IO) {
             require(origin.isResolved && destination.isResolved)
@@ -29,9 +30,10 @@ internal class RouteRepository(
                 .put("latitude", endpoint.latitude).put("longitude", endpoint.longitude)
             val request = JSONObject().put("origin", point(origin)).put("destination", point(destination))
             if (restroomId != null) {
-                require(restroomId > 0 && maxDetourMinutes in listOf(5, 10, 15))
+                require(restroomId > 0 && maxDetourMinutes in DetourMinuteOptions)
                 request.put("restroomId", restroomId).put("maxDetourMinutes", maxDetourMinutes)
-                    .put("freePublicOnly", freePublicOnly)
+                    .put("freePublicOnly", freePublicOnly).put("allowBeyondPreference", true)
+                if (includeStopTravelTime) request.put("includeStopTravelTime", true)
             }
             val payload = request.toString().toByteArray(Charsets.UTF_8)
             val connection = URL(baseUrl.trimEnd('/') + "/api/routes").openConnection() as HttpURLConnection
@@ -61,12 +63,12 @@ internal class RouteRepository(
                     val extra = (failure?.opt("extraDrivingSeconds") as? Number)?.toDouble()
                         ?.takeIf { it.isFinite() && it >= 0 }
                     val limit = (failure?.opt("detourLimitMinutes") as? Number)?.toInt()
-                        ?.takeIf { it in listOf(5, 10, 15) }
+                        ?.takeIf { it in DetourMinuteOptions }
                     throw RouteRequestException(status, code, extra, limit)
                 }
                 val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                 ensureActive()
-                val result = DrivingRouteJson.decode(body, origin, destination)
+                val result = DrivingRouteJson.decode(body, origin, destination, allowBeyondPreference = true)
                 if (result.stop?.id != restroomId || (restroomId != null && result.detourLimitMinutes != maxDetourMinutes)) {
                     throw JSONException("Unexpected restroom stop")
                 }
@@ -89,7 +91,7 @@ internal fun routeErrorMessage(error: Exception): String = when (error) {
         "RESTROOM_LOOKUP_FAILED" -> "Couldn't look up this restroom. Please try again."
         "RESTROOM_COORDINATES_UNAVAILABLE" -> "This restroom has no usable location. Choose another stop."
         "RESTROOM_NOT_ELIGIBLE" -> "This restroom doesn't meet your access and fee preference. Choose another stop."
-        "INVALID_DETOUR_PREFERENCES" -> "Choose a 5, 10 or 15 minute detour allowance and try again."
+        "INVALID_DETOUR_PREFERENCES" -> "Choose a 5, 10, 15, 20, 25 or 30 minute detour allowance and try again."
         "DETOUR_LIMIT_EXCEEDED" -> {
             val extra = error.extraDrivingSeconds
             val limit = error.detourLimitMinutes

@@ -32,6 +32,30 @@ class TripPlanningViewModelTest {
         "stop" to "demo-library"
     ))
 
+    @Test fun letsGoRequiresDestinationAndDenialNeverAdvances() = onMain {
+        val missing = create(SavedStateHandle())
+        assertFalse(missing.prepareGo())
+        val vm = create(selectedEndpoints())
+        assertTrue(vm.prepareGo())
+        vm.beginGpsPermission()
+        vm.gpsPermissionResult(false)
+        assertFalse(vm.businessesReady)
+        assertFalse(vm.origin.isBusy)
+        assertTrue(vm.origin.isError)
+        assertTrue(vm.origin.message!!.contains("denied"))
+    }
+
+    @Test fun destinationEditsCancelPendingLetsGo() = onMain {
+        val vm = create(selectedEndpoints())
+        vm.prepareGo()
+        vm.beginGpsPermission()
+        vm.edit(EndpointTarget.DESTINATION, "Changed")
+        vm.gpsPermissionResult(true)
+        assertFalse(vm.businessesReady)
+        assertFalse(vm.origin.isBusy)
+        assertFalse(vm.origin.endpoint.isResolved)
+    }
+
     @Test fun restoresCoordinatesPreferencesAndStop() = onMain {
         val vm = create(selectedEndpoints())
         assertTrue(vm.canPreview)
@@ -87,6 +111,18 @@ class TripPlanningViewModelTest {
         assertEquals(EndpointSource.MANUAL, vm.origin.endpoint.source)
         assertFalse(vm.origin.isBusy)
         assertFalse(vm.origin.endpoint.isResolved)
+    }
+
+    @Test fun allSixTimeOptionsPersistAndInvalidSelectionsAreIgnored() = onMain {
+        val saved = selectedEndpoints()
+        val vm = create(saved)
+        for (minutes in listOf(5, 10, 15, 20, 25, 30)) {
+            vm.setDetour(minutes)
+            assertEquals(minutes, vm.maxDetourMinutes)
+            assertEquals(minutes, create(saved).maxDetourMinutes)
+        }
+        vm.setDetour(7)
+        assertEquals(30, vm.maxDetourMinutes)
     }
 
     @Test fun changedPreferencesPersistAndResetStop() = onMain {

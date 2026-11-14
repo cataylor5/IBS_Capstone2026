@@ -22,7 +22,7 @@ class NavigationContractTest {
         val intent = LiveNavigationActivity.intent(context, route(), false)
         val plan = LiveNavigationActivity.decodePlan(intent)!!
         assertEquals("Test restroom", plan.remainingTargets(NavigationProgress()).first().name)
-        assertEquals("Destination", plan.destination.name)
+        assertEquals("Destination", plan.destination!!.name)
         assertEquals(36.07, plan.origin.latitude, 0.0)
         assertFalse(intent.getBooleanExtra("demo", true))
     }
@@ -41,6 +41,37 @@ class NavigationContractTest {
         })
         assertNull(LiveNavigationActivity.decodePlan(intent))
     }
+    @Test fun mapOnlyIntentExplicitlyAllowsMissingDestination() {
+        val map = NavigationPlan(NavigationTarget("User", 36.07, -79.79), null)
+        val request = LiveNavigationActivity.intent(context, map, true, false, 10)
+        val decoded = LiveNavigationActivity.decodePlan(request)!!
+        assertNull(decoded.destination)
+        assertTrue(decoded.remainingTargets(NavigationProgress()).isEmpty())
+        request.removeExtra("map_only")
+        assertNull(LiveNavigationActivity.decodePlan(request))
+    }
+
+    @Test fun selectedPreferencesCarryIntoChangeStopForDirectAndMapOnlyTrips() {
+        val filters = RestroomPreferences(setOf(RestroomAccess.MEMBERSHIP_REQUIRED), 5, PrivacyPreference.PRIVATE)
+        val request = LiveNavigationActivity.intent(context,
+            NavigationPlan(NavigationTarget("User", 36.07, -79.79), null), true, false, 30,
+            preferences = filters)
+        assertEquals(filters, LiveNavigationActivity.decodePreferences(request))
+        assertEquals(30, request.getIntExtra("detour_minutes", 0))
+    }
+
+    @Test fun businessChosenAsDestinationKeepsRestroomMarkerIdentity() {
+        val target = NavigationTarget("Restroom business", 36.09, -80.1)
+        val request = LiveNavigationActivity.intent(context,
+            NavigationPlan(NavigationTarget("User", 36.07, -79.79), target),
+            true, false, 15, selectedId = 5)
+        assertTrue(request.getBooleanExtra("final_is_restroom", false))
+        val via = LiveNavigationActivity.intent(context,
+            NavigationPlan(NavigationTarget("User", 36.07, -79.79), target, target),
+            true, false, 15, selectedId = 5)
+        assertFalse(via.getBooleanExtra("final_is_restroom", true))
+    }
+
     @Test fun navigationActivityIsPrivate() {
         val info = context.packageManager.getActivityInfo(
             android.content.ComponentName(context, LiveNavigationActivity::class.java), 0)

@@ -18,8 +18,21 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+internal class LocationDisabledException : Exception()
+
 /** Uses application context only; requests outlive Activity recreation, not the ViewModel. */
 internal class EndpointLocationService(private val context: Context) {
+    suspend fun predictions(query: String, session: AutocompleteSessionToken): List<DestinationPrediction> {
+        check(Places.isInitialized())
+        val cancellation = CancellationTokenSource()
+        val request = com.google.android.libraries.places.api.net.FindAutocompletePredictionsRequest.builder()
+            .setQuery(query).setSessionToken(session).setCancellationToken(cancellation.token).build()
+        return Places.createClient(context).findAutocompletePredictions(request)
+            .awaitResult(cancellation).autocompletePredictions.map {
+                DestinationPrediction(it.placeId, it.getFullText(null).toString())
+            }
+    }
+
     suspend fun resolvePlace(id: String, text: String, session: AutocompleteSessionToken?): TripEndpoint {
         check(Places.isInitialized()) { "Places is not initialized" }
         val cancellation = CancellationTokenSource()
@@ -38,6 +51,8 @@ internal class EndpointLocationService(private val context: Context) {
         val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         if (!fine && !coarse) throw SecurityException()
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+        if (!androidx.core.location.LocationManagerCompat.isLocationEnabled(manager)) throw LocationDisabledException()
         val cancellation = CancellationTokenSource()
         val request = CurrentLocationRequest.Builder()
             .setPriority(if (fine) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY)

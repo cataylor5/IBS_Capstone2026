@@ -148,7 +148,7 @@ test("uses server database coordinates and returns direct baseline plus added dr
 });
 
 test("each detour allowance accepts its exact boundary and rejects a longer detour", async () => {
-    for (const minutes of [5, 10, 15]) {
+    for (const minutes of [5, 10, 15, 20, 25, 30]) {
         const request = { ...detourRequest, maxDetourMinutes: minutes };
         const allowed = await invoke(request, detourOptions({ viaSeconds: 2400 + minutes * 60 }));
         assert.equal(allowed.status, 200);

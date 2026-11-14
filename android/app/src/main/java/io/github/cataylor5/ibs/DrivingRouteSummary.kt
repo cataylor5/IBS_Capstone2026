@@ -54,7 +54,7 @@ fun DrivingRouteSummary(route: DrivingRoute, onClear: () -> Unit, onRemoveStop: 
         Text(String.format(Locale.US, "%.1f mi • %s", route.distanceMeters / 1609.344, drivingMinutes(route.durationSeconds)),
             style = MaterialTheme.typography.titleMedium)
         if (route.stop != null && route.baseline != null && route.extraDrivingSeconds != null) {
-            Text("Added driving time: ${drivingMinutes(route.extraDrivingSeconds)} (limit: ${route.detourLimitMinutes} min)")
+            Text("Added driving time: ${drivingMinutes(route.extraDrivingSeconds)} (preference: ${route.detourLimitMinutes} min)")
             Text("Direct route: ${drivingMinutes(route.baseline.durationSeconds)}. Restroom visit time is not included.",
                 style = MaterialTheme.typography.bodySmall)
             Text("Development database stop; verify restroom access before relying on it.",

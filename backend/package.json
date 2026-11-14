@@ -6,7 +6,9 @@
   "engines": { "node": ">=20.6" },
   "scripts": {
     "start": "node --env-file=.env server.js",
-    "test": "node --test routes.test.js"
+    "test": "node --test routes.test.js routes.preference.test.js routes.travel.test.js arrival-reviews.test.js",
+    "setup:reviews": "node --env-file=.env setup-review-storage.js",
+    "test:reviews:db": "node --env-file=.env --test arrival-reviews.db.test.js"
   },
   "keywords": [],
   "author": "",

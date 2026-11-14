@@ -20,6 +20,20 @@ class RestroomDetourTest {
         .put("baseline", direct()).put("extraDrivingSeconds", 180).put("detourLimitMinutes", 5)
     private fun route() = DrivingRouteJson.decode(detour().toString(), origin, destination)
 
+    @Test fun newAllowancesSurviveRequestAndResponseValidation() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val repository = RouteRepository(server.url("/").toString())
+            for (minutes in listOf(20, 25, 30)) {
+                server.enqueue(MockResponse().setBody(detour().put("detourLimitMinutes", minutes).toString()))
+                val result = repository.compute(origin, destination, 12, minutes, false)
+                assertEquals(minutes, result.detourLimitMinutes)
+                assertEquals(minutes, JSONObject(server.takeRequest().body.readUtf8()).getInt("maxDetourMinutes"))
+            }
+        } finally { server.shutdown() }
+    }
+
     @Test fun readsRestroomBaselineAndExactAddedTime() {
         val route = route()
         assertEquals(12L, route.stop!!.id)
@@ -41,6 +55,37 @@ class RestroomDetourTest {
     @Test(expected = JSONException::class) fun aSuccessfulResponseStillMustRespectTheAllowance() {
         DrivingRouteJson.decode(detour().put("durationSeconds", 2800)
             .put("extraDrivingSeconds", 400).toString(), origin, destination)
+    }
+
+    @Test fun appExplicitlyAllowsAFartherStopAndDecodesItsActualTime() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(MockResponse().setBody(detour().put("durationSeconds", 2800)
+                .put("extraDrivingSeconds", 400).toString()))
+            val result = RouteRepository(server.url("/").toString())
+                .compute(origin, destination, 12, 5, false)
+            assertEquals(400.0, result.extraDrivingSeconds!!, 0.001)
+            assertTrue(JSONObject(server.takeRequest().body.readUtf8()).getBoolean("allowBeyondPreference"))
+        } finally { server.shutdown() }
+    }
+
+    @Test fun arrivalTimeIsOptionalAndSeparateFromDetour() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(MockResponse().setBody(detour().put("stopTravelSeconds", 420.5).toString()))
+            val result = RouteRepository(server.url("/").toString())
+                .compute(origin, destination, 12, 5, false, includeStopTravelTime = true)
+            assertEquals(420.5, result.stopTravelSeconds!!, 0.001)
+            assertEquals(180.0, result.extraDrivingSeconds!!, 0.001)
+            assertTrue(JSONObject(server.takeRequest().body.readUtf8()).getBoolean("includeStopTravelTime"))
+            for (value in listOf(-1, 999999, JSONObject.NULL, "invalid")) {
+                assertNull(DrivingRouteJson.decode(detour().put("stopTravelSeconds", value).toString(),
+                    origin, destination).stopTravelSeconds)
+            }
+            assertNull(route().stopTravelSeconds)
+        } finally { server.shutdown() }
     }
 
     @Test fun failedDetourPreservesTheExistingDirectRoute() {

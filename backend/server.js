@@ -4,6 +4,9 @@ const session = require("express-session");
 const crypto = require("crypto");
 const db = require("./db");
 const { createRouteHandler } = require("./routes");
+const { PgSessionStore } = require("./review-session-store");
+const { createArrivalReviewHandlers } = require("./arrival-reviews");
+const reviewPools = require("./review-pools");
 
 if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.startsWith("REPLACE_")) {
     throw new Error("Set SESSION_SECRET in backend/.env before starting the API.");
@@ -14,6 +17,7 @@ app.use(express.json());
 
 app.use(session({
     secret: process.env.SESSION_SECRET,
+    store: new PgSessionStore(db),
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
@@ -47,8 +51,12 @@ async function guest(req, res, next) {
 const restroomSQL = `
     SELECT r.*, b.name AS business_name, b.address,
            b.latitude, b.longitude, b.google_place_id,
-           ROUND(AVG(a.overall), 1) AS average_rating,
-           COUNT(a.rating_id)::int AS rating_count
+           AVG(a.overall) AS average_rating,
+           COUNT(a.rating_id)::int AS rating_count,
+           COALESCE((SELECT jsonb_agg(jsonb_build_object(
+               'iso_weekday', h.iso_weekday, 'opens_at', h.opens_at, 'closes_at', h.closes_at
+           ) ORDER BY h.iso_weekday, h.opens_at)
+               FROM business_hours h WHERE h.business_id = b.business_id), '[]'::jsonb) AS business_hours
     FROM restrooms r
     JOIN businesses b ON b.business_id = r.business_id
     LEFT JOIN ratings a ON a.restroom_id = r.restroom_id
@@ -68,8 +76,8 @@ app.get("/", (req, res) => res.send("IBS Restroom Finder API"));
 
 app.get("/api/health", async (req, res, next) => {
     try {
-        await db.query("SELECT 1");
-        res.json({ status: "OK", database: "connected" });
+        const result = await db.query("SELECT current_database() AS name");
+        res.json({ status: "OK", database: "connected", databaseName: result.rows[0].name });
     } catch (err) { next(err); }
 });
 
@@ -223,6 +231,10 @@ app.get("/api/restrooms/:id/reviews", async (req, res, next) => {
         res.json(result.rows);
     } catch (err) { next(err); }
 });
+
+const arrivalReviews = createArrivalReviewHandlers(reviewPools);
+app.get("/api/restrooms/:id/arrival-review", guest, arrivalReviews.context);
+app.post("/api/restrooms/:id/arrival-review", guest, arrivalReviews.submit);
 
 // Add review
 app.post("/api/restrooms/:id/reviews", guest, async (req, res, next) => {

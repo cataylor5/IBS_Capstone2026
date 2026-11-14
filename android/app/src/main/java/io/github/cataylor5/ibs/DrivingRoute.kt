@@ -17,11 +17,12 @@ data class DrivingRoute(
     val stop: RouteStop? = null,
     val baseline: DrivingRoute? = null,
     val extraDrivingSeconds: Double? = null,
-    val detourLimitMinutes: Int? = null
+    val detourLimitMinutes: Int? = null,
+    val stopTravelSeconds: Double? = null
 )
 
 internal object DrivingRouteJson {
-    fun decode(body: String, origin: TripEndpoint, destination: TripEndpoint): DrivingRoute {
+    fun decode(body: String, origin: TripEndpoint, destination: TripEndpoint, allowBeyondPreference: Boolean = false): DrivingRoute {
         val json = JSONObject(body)
         val route = direct(json, origin, destination)
         if (!json.has("stop") || json.isNull("stop")) return route
@@ -39,12 +40,14 @@ internal object DrivingRouteJson {
         if (id <= 0 || name.isBlank() || !latitude.isFinite() || latitude !in -90.0..90.0 ||
             !longitude.isFinite() || longitude !in -180.0..180.0 ||
             !extra.isFinite() || extra < 0 || kotlin.math.abs(extra - expectedExtra) > 0.001 ||
-            limit !in listOf(5.0, 10.0, 15.0) || extra > limit * 60) {
+            DetourMinuteOptions.none { limit == it.toDouble() } || (!allowBeyondPreference && extra > limit * 60)) {
             throw JSONException("Invalid restroom detour")
         }
         return route.copy(
             stop = RouteStop(id, name, stop.opt("address").takeIf { it is String } as? String, latitude, longitude),
-            baseline = baseline, extraDrivingSeconds = extra, detourLimitMinutes = limit.toInt()
+            baseline = baseline, extraDrivingSeconds = extra, detourLimitMinutes = limit.toInt(),
+            stopTravelSeconds = (json.opt("stopTravelSeconds") as? Number)?.toDouble()
+                ?.takeIf { it.isFinite() && it >= 0 && it <= route.durationSeconds }
         )
     }
 

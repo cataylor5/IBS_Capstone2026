@@ -36,6 +36,46 @@ class RestroomApiTest {
         assertTrue(room.requiresCode!!)
     }
 
+    @Test fun readsBusinessHoursByBusinessIdWithoutChangingRatings() {
+        val json = org.json.JSONObject(record).put("business_id", 9)
+            .put("business_hours", org.json.JSONArray("""[
+                {"iso_weekday":7,"opens_at":"22:00:00","closes_at":"02:00:00"}
+            ]"""))
+        val room = RestroomJson.detail(json.toString())
+        assertEquals(9L, room.businessId)
+        assertEquals(listOf(BusinessHours(7, "22:00:00", "02:00:00")), room.businessHours)
+        assertEquals(4.5, room.averageRating!!, 0.001)
+        assertTrue(RestroomJson.detail(record).businessHours.isEmpty())
+        json.put("business_hours", org.json.JSONArray("""[{"iso_weekday":0,"opens_at":"bad"}]"""))
+        assertEquals("Hours unavailable", businessHoursCountdown(RestroomJson.detail(json.toString()).businessHours))
+    }
+
+    @Test fun circleKSevenDayHoursAndMidnightClosingSurviveApiDecoding() {
+        val hours = org.json.JSONArray()
+        for (day in 1..7) hours.put(org.json.JSONObject()
+            .put("iso_weekday", day).put("opens_at", "06:00:00").put("closes_at", "00:00:00"))
+        val json = org.json.JSONObject(record).put("restroom_id", 5).put("business_id", 8)
+            .put("business_name", "Circle K").put("business_hours", hours)
+        val listRoom = RestroomJson.list("[$json]").single()
+        val detail = RestroomJson.detail(json.toString())
+        assertEquals(8L, listRoom.businessId)
+        assertEquals(7, listRoom.businessHours.size)
+        assertEquals(detail.businessHours, listRoom.businessHours)
+        assertEquals("Closes in 30 min", businessHoursCountdown(detail.businessHours,
+            java.time.Instant.parse("2026-11-10T04:30:00Z")))
+        assertEquals("Opens in 5 hr 30 min", businessHoursCountdown(detail.businessHours,
+            java.time.Instant.parse("2026-11-10T05:30:00Z")))
+    }
+
+    @Test fun membershipPrivacyAndUnroundedAverageAreReadFromSameRecord() {
+        val room = RestroomJson.detail(org.json.JSONObject(record).put("access_type", "MEMBERSHIP_REQUIRED")
+            .put("restroom_type", "FAMILY").put("average_rating", "4.5999999999999999").toString())
+        assertEquals(RestroomAccess.MEMBERSHIP_REQUIRED, room.access)
+        assertEquals("FAMILY", room.restroomType)
+        assertTrue(room.canUseForRoute(false))
+        assertFalse(RestroomPreferences(minimumStars = 5).matches(room))
+    }
+
     @Test fun absentFeeInformationIsUnknownAndExcludedFromFreeFilter() {
         val room = RestroomJson.detail(record)
         assertNull(room.feeRequired)

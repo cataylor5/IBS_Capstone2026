@@ -18,6 +18,40 @@ class TripPlanningViewModel(
     application: Application,
     private val saved: SavedStateHandle
 ) : AndroidViewModel(application) {
+    var businessesReady by mutableStateOf(saved.get<Boolean>("businesses_ready") ?: false)
+        private set
+    private var goPending = false
+    internal var homeLocationStarted = false
+    var simulationPending by mutableStateOf(false)
+        private set
+
+    fun prepareGo(): Boolean {
+        attemptedPreview = true
+        saved["attempted"] = true
+        if (!destination.endpoint.isResolved || destination.isBusy) return false
+        businessesReady = false
+        saved["businesses_ready"] = false
+        goPending = true
+        clearRoute()
+        return true
+    }
+
+    fun backToPlanning() {
+        businessesReady = false
+        saved["businesses_ready"] = false
+        goPending = false
+        simulationPending = false
+        clearRoute()
+    }
+
+    fun confirmSimulation(id: Long) {
+        clearRoute()
+        simulationPending = true
+        calculateRoute(id)
+    }
+
+    fun consumeSimulation() { simulationPending = false }
+
     private val service = EndpointLocationService(application)
     private val jobs = mutableMapOf<EndpointTarget, Job>()
     private val routeRepository = RouteRepository()
@@ -102,10 +136,29 @@ class TripPlanningViewModel(
         private set
     var destination by mutableStateOf(restore(EndpointTarget.DESTINATION))
         private set
-    var maxDetourMinutes by mutableStateOf(saved.get<Int>("detour") ?: 10)
+    var maxDetourMinutes by mutableStateOf(saved.get<Int>("detour")?.takeIf { it in DetourMinuteOptions } ?: 10)
         private set
     var freePublicOnly by mutableStateOf(saved.get<Boolean>("free") ?: false)
         private set
+    var restroomPreferences by mutableStateOf(RestroomPreferences(
+        access = saved.get<ArrayList<String>>("filter_access").orEmpty().mapNotNull {
+            runCatching { RestroomAccess.valueOf(it) }.getOrNull()
+        }.toSet(),
+        minimumStars = saved.get<Int>("filter_rating")?.takeIf { it in 1..5 },
+        privacy = saved.get<String>("filter_privacy")?.let {
+            runCatching { PrivacyPreference.valueOf(it) }.getOrNull()
+        }
+    ))
+        private set
+
+    fun updatePreferences(next: RestroomPreferences) {
+        restroomPreferences = next
+        saved["filter_access"] = ArrayList(next.access.map { it.name })
+        saved["filter_rating"] = next.minimumStars
+        saved["filter_privacy"] = next.privacy?.name
+        tripChanged()
+    }
+
     var attemptedPreview by mutableStateOf(saved.get<Boolean>("attempted") ?: false)
         private set
     var showPreview by mutableStateOf(saved.get<Boolean>("preview") ?: false)
@@ -156,6 +209,10 @@ class TripPlanningViewModel(
     }
 
     private fun tripChanged() {
+        goPending = false
+        businessesReady = false
+        saved["businesses_ready"] = false
+        simulationPending = false
         clearRoute()
         closePreview()
         selectStop(null)
@@ -164,6 +221,10 @@ class TripPlanningViewModel(
     }
 
     fun edit(target: EndpointTarget, text: String) {
+        if (target == EndpointTarget.DESTINATION && goPending) {
+            cancelWork(EndpointTarget.ORIGIN)
+            update(EndpointTarget.ORIGIN, origin.edit(""))
+        }
         cancelWork(target)
         update(target, state(target).edit(text))
         tripChanged()
@@ -172,10 +233,12 @@ class TripPlanningViewModel(
     fun useManualOrigin() = edit(EndpointTarget.ORIGIN, "")
 
     fun setDetour(minutes: Int) {
-        if (minutes !in listOf(5, 10, 15) || minutes == maxDetourMinutes) return
+        if (minutes !in DetourMinuteOptions || minutes == maxDetourMinutes) return
         maxDetourMinutes = minutes
         saved["detour"] = minutes
-        tripChanged()
+        // A display preference must not discard a deliberately selected farther stop.
+        closePreview()
+        routeState = routeState.copy(route = routeState.route?.copy(detourLimitMinutes = minutes))
     }
 
     fun changeFreePublicOnly(value: Boolean) {
@@ -252,6 +315,18 @@ class TripPlanningViewModel(
         }
     }
 
+    internal fun updateHomeLocation(latitude: Double, longitude: Double) {
+        if (origin.isBusy || origin.endpoint.source != EndpointSource.GPS) return
+        val next = TripEndpoint("Using current location", latitude, longitude, source = EndpointSource.GPS)
+        if (!next.isResolved) return
+        val previous = origin.endpoint
+        if (previous.isResolved && straightLineMeters(
+                NavigationTarget("Previous position", previous.latitude!!, previous.longitude!!),
+                NavigationTarget("Current position", latitude, longitude)) < 100) return
+        tripChanged()
+        update(EndpointTarget.ORIGIN, EndpointState(next, revision = origin.revision + 1))
+    }
+
     fun beginGpsPermission() {
         interruptRouteRequest()
         val target = EndpointTarget.ORIGIN
@@ -267,7 +342,7 @@ class TripPlanningViewModel(
         if (origin.revision != ticket) return
         if (!allowed) {
             update(EndpointTarget.ORIGIN, origin.fail(ticket,
-                "Location access wasn't granted. Allow it in app settings, or search for a starting location."))
+                "Location permission was denied. Tap Retry location or open App Settings to allow precise location."))
             return
         }
         update(EndpointTarget.ORIGIN, origin.copy(
@@ -277,20 +352,29 @@ class TripPlanningViewModel(
             try {
                 val endpoint = withTimeout(20_000) { service.currentLocation() }
                 if (endpoint != null && endpoint.isResolved) {
-                    if (origin.revision == ticket) tripChanged()
-                    update(EndpointTarget.ORIGIN, origin.complete(ticket, endpoint))
+                    if (origin.revision == ticket) {
+                        val advance = goPending
+                        tripChanged()
+                        update(EndpointTarget.ORIGIN, origin.complete(ticket, endpoint))
+                        businessesReady = advance
+                        saved["businesses_ready"] = advance
+                        goPending = false
+                    }
                 } else {
                     update(EndpointTarget.ORIGIN, origin.fail(ticket,
-                        "No location received. Turn on device location and try GPS again, or search manually."))
+                        "No location received. Turn on device location, then tap Retry location."))
                 }
+            } catch (_: LocationDisabledException) {
+                update(EndpointTarget.ORIGIN, origin.fail(ticket,
+                    "Device location is disabled. Open Location Settings, turn it on, then tap Retry location."))
             } catch (_: SecurityException) {
                 update(EndpointTarget.ORIGIN, origin.fail(ticket,
-                    "Location permission changed. Tap GPS to allow access, or use manual search."))
+                    "Location permission changed. Tap Retry location to allow access, or open App Settings."))
             } catch (_: TimeoutCancellationException) {
                 update(EndpointTarget.ORIGIN, origin.fail(ticket,
-                    "Location request timed out. Check device location and tap GPS again."))
+                    "Location request timed out. Check device location and tap Retry location."))
             } catch (cancelled: CancellationException) {
-                update(EndpointTarget.ORIGIN, origin.fail(ticket, "Location request was interrupted. Tap GPS again."))
+                update(EndpointTarget.ORIGIN, origin.fail(ticket, "Location request was interrupted. Tap Retry location."))
                 throw cancelled
             } catch (_: Exception) {
                 update(EndpointTarget.ORIGIN, origin.fail(ticket,

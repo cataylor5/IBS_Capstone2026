@@ -20,13 +20,13 @@ function createRouteHandler({
     lookupRestroom = async () => null
 } = {}) {
     return async (req, res) => {
-        const { origin, destination, restroomId, maxDetourMinutes, freePublicOnly } = req.body || {};
+        const { origin, destination, restroomId, maxDetourMinutes, freePublicOnly, allowBeyondPreference, includeStopTravelTime } = req.body || {};
         if (!validPoint(origin) || !validPoint(destination)) {
             return res.status(400).json({ code: "INVALID_ENDPOINTS", error: "Two valid coordinate pairs are required." });
         }
         const withStop = restroomId !== undefined;
         if (withStop && (!Number.isSafeInteger(restroomId) || restroomId <= 0 ||
-            ![5, 10, 15].includes(maxDetourMinutes) || typeof freePublicOnly !== "boolean")) {
+            ![5, 10, 15, 20, 25, 30].includes(maxDetourMinutes) || typeof freePublicOnly !== "boolean")) {
             return res.status(400).json({ code: "INVALID_DETOUR_PREFERENCES", error: "A restroom ID, detour allowance and availability preference are required." });
         }
         const key = getApiKey();
@@ -49,7 +49,8 @@ function createRouteHandler({
                 headers: {
                     "Content-Type": "application/json",
                     "X-Goog-Api-Key": key,
-                    "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline"
+                    "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline" +
+                        (includeStopTravelTime === true && stop ? ",routes.legs.duration" : "")
                 },
                 signal: AbortSignal.timeout(12_000),
                 body: JSON.stringify(body)
@@ -78,7 +79,14 @@ function createRouteHandler({
                 typeof encodedPolyline !== "string" || !encodedPolyline.length || encodedPolyline.length > 200000) {
                 throw new RouteFailure(502, "INVALID_ROUTE_RESPONSE", "The route provider returned incomplete route data.");
             }
-            return { distanceMeters: route.distanceMeters, durationSeconds: duration, encodedPolyline };
+            const result = { distanceMeters: route.distanceMeters, durationSeconds: duration, encodedPolyline };
+            if (includeStopTravelTime === true && stop) {
+                const firstLeg = Array.isArray(route.legs) && route.legs.length === 2 ? route.legs[0]?.duration : null;
+                const seconds = typeof firstLeg === "string" && /^\d+(?:\.\d{1,9})?s$/.test(firstLeg)
+                    ? Number(firstLeg.slice(0, -1)) : NaN;
+                result.stopTravelSeconds = Number.isFinite(seconds) && seconds >= 0 && seconds <= duration ? seconds : null;
+            }
+            return result;
         }
 
         try {
@@ -94,7 +102,7 @@ function createRouteHandler({
             if (!validPoint(coordinates) || typeof row.name !== "string" || !row.name.trim()) {
                 throw new RouteFailure(422, "RESTROOM_COORDINATES_UNAVAILABLE", "This restroom has no usable location.");
             }
-            if (!["PUBLIC", "CUSTOMER_ONLY"].includes(row.accessType) ||
+            if (!["PUBLIC", "CUSTOMER_ONLY", "MEMBERSHIP_REQUIRED"].includes(row.accessType) ||
                 (freePublicOnly && !(row.accessType === "PUBLIC" && row.feeRequired === false && row.requiresPurchase === false))) {
                 throw new RouteFailure(409, "RESTROOM_NOT_ELIGIBLE", "This restroom does not meet the selected access and fee preference.");
             }
@@ -102,7 +110,7 @@ function createRouteHandler({
             // geometry also lets Android remove a stop without another provider request.
             const [baseline, route] = await Promise.all([compute(), compute(coordinates)]);
             const extraDrivingSeconds = Math.max(0, route.durationSeconds - baseline.durationSeconds);
-            if (extraDrivingSeconds > maxDetourMinutes * 60) {
+            if (extraDrivingSeconds > maxDetourMinutes * 60 && allowBeyondPreference !== true) {
                 throw new RouteFailure(409, "DETOUR_LIMIT_EXCEEDED", "This stop exceeds the selected driving detour allowance.",
                     { extraDrivingSeconds, detourLimitMinutes: maxDetourMinutes });
             }

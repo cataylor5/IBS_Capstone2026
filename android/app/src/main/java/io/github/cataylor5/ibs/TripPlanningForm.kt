@@ -31,12 +31,14 @@ import androidx.compose.ui.unit.dp
 import com.google.android.libraries.places.api.Places
 import com.google.android.libraries.places.widget.PlaceAutocomplete
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun TripPlanningForm(
     viewModel: TripPlanningViewModel,
     onStartRoute: () -> Unit,
     routeAccessMessage: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    destinationOnly: Boolean = false
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -103,8 +105,8 @@ fun TripPlanningForm(
         ) {
             Text("Plan your trip", style = MaterialTheme.typography.titleLarge)
             Text("Out of way by:", style = MaterialTheme.typography.titleMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(5, 10, 15).forEach { minutes ->
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DetourMinuteOptions.forEach { minutes ->
                     FilterChip(
                         selected = viewModel.maxDetourMinutes == minutes,
                         onClick = { viewModel.setDetour(minutes) },
@@ -113,7 +115,7 @@ fun TripPlanningForm(
                     )
                 }
             }
-            Text("Extra driving minutes per stop.", style = MaterialTheme.typography.bodySmall)
+            Text(if (destinationOnly) "Optional preferences • extra driving minutes per stop." else "Filter by extra driving minutes; farther stops remain available.", style = MaterialTheme.typography.bodySmall)
             Text("Availability:", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
@@ -130,6 +132,7 @@ fun TripPlanningForm(
                 )
             }
 
+            if (!destinationOnly) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -163,6 +166,7 @@ fun TripPlanningForm(
                     "Search and select a starting location, or tap GPS." else null
             )
 
+            }
             OutlinedTextField(
                 value = destination.endpoint.displayText,
                 onValueChange = { viewModel.edit(EndpointTarget.DESTINATION, it) },
@@ -183,7 +187,12 @@ fun TripPlanningForm(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Button(
+            if (destinationOnly) {
+                CurrentLocationButton(viewModel, Modifier.fillMaxWidth(), primaryGo = true)
+                if (origin.isBusy) Text("Getting your current location…")
+                if (origin.isBusy || origin.isError) EndpointFeedback(origin, null)
+                if (origin.isError) LocationSettingsActions()
+            } else Button(
                 onClick = {
                     focusManager.clearFocus()
                     viewModel.preview()
@@ -191,14 +200,14 @@ fun TripPlanningForm(
                 enabled = !origin.isBusy && !destination.isBusy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Preview trip") }
-            Text(
+            if (!destinationOnly) Text(
                 "Select both locations, preview your trip, then tap Start now to calculate a driving route. Restroom stops remain fictional demo data.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
     }
 
-    if (selectedStop != null) {
+    if (!destinationOnly && selectedStop != null) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -220,7 +229,7 @@ fun TripPlanningForm(
         }
     }
 
-    if (viewModel.showPreview && viewModel.canPreview) {
+    if (!destinationOnly && viewModel.showPreview && viewModel.canPreview) {
         AlertDialog(
             onDismissRequest = { viewModel.closePreview() },
             title = { Text("Your trip preview") },

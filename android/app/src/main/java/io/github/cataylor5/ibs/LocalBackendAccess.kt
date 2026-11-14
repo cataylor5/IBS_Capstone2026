@@ -10,9 +10,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,7 +23,8 @@ import androidx.core.content.ContextCompat
 internal enum class RestroomRequest { LOAD, REFRESH, DETAILS, START_ROUTE, ROUTE_VIA_STOP }
 internal data class LocalBackendAccess(
     val request: (RestroomRequest, Long?) -> Unit,
-    val message: String?
+    val message: String?,
+    val openSettings: () -> Unit = {}
 )
 
 /** Android 17 gates direct local-network traffic, including the debug emulator API. */
@@ -45,8 +43,7 @@ internal fun rememberLocalBackendAccess(
     var pendingAction by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingId by rememberSaveable { mutableStateOf<Long?>(null) }
     var message by rememberSaveable { mutableStateOf<String?>(null) }
-    var rationale by rememberSaveable { mutableStateOf(false) }
-    var settings by rememberSaveable { mutableStateOf(false) }
+    var permissionAsked by rememberSaveable { mutableStateOf(false) }
 
     fun granted() = !permissionRequired ||
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -75,40 +72,7 @@ internal fun rememberLocalBackendAccess(
         } else {
             clearPending()
             message = "Local network access is off. Allow Nearby devices access to connect to the development API, then retry."
-            if (!needsRationale()) settings = true
         }
-    }
-    if (rationale) {
-        AlertDialog(
-            onDismissRequest = { rationale = false; clearPending() },
-            title = { Text("Connect to the development API") },
-            text = { Text("This debug build needs local network access to load IBS restroom data and calculate routes through your development computer.") },
-            confirmButton = {
-                TextButton(onClick = { rationale = false; launcher.launch(permission) }) { Text("Continue") }
-            },
-            dismissButton = {
-                TextButton(onClick = { rationale = false; clearPending() }) { Text("Cancel") }
-            }
-        )
-    }
-    if (settings) {
-        AlertDialog(
-            onDismissRequest = { settings = false },
-            title = { Text("Local network access is off") },
-            text = { Text("Allow Nearby devices in app settings, return to IBS, and tap Retry.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    settings = false
-                    context.startActivity(Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.fromParts("package", context.packageName, null)
-                    ))
-                }) { Text("Open app settings") }
-            },
-            dismissButton = {
-                TextButton(onClick = { settings = false }) { Text("Cancel") }
-            }
-        )
     }
     return LocalBackendAccess(
         request = { action, id ->
@@ -118,12 +82,19 @@ internal fun rememberLocalBackendAccess(
                 pendingId = id
                 when {
                     granted() -> executePending()
-                    needsRationale() -> rationale = true
-                    else -> launcher.launch(permission)
+                    permissionAsked && !needsRationale() -> {
+                        clearPending()
+                        message = "Local network permission is off. Allow Nearby devices in Settings, then retry."
+                    }
+                    else -> { permissionAsked = true; launcher.launch(permission) }
                 }
             }
         },
-        message = message
+        message = message,
+        openSettings = {
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null)))
+        }
     )
 }
 
